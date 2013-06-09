@@ -5,13 +5,13 @@
  * @license http://www.yiiframework.com/license/
  */
 
-namespace yii\helpers;
+namespace yii\console;
 
 /**
- *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
-class Json extends base\Json
+class Response extends \yii\base\Response
 {
+	
 }
