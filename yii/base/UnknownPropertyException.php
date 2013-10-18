@@ -20,7 +20,6 @@ class UnknownPropertyException extends Exception
 	 */
 	public function getName()
 	{
-		return \Yii::t('yii|Unknown Property');
+		return \Yii::t('yii', 'Unknown Property');
 	}
 }
-

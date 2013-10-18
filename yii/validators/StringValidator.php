@@ -21,17 +21,24 @@ use yii\helpers\Html;
 class StringValidator extends Validator
 {
 	/**
-	 * @var integer maximum length. Defaults to null, meaning no maximum limit.
+	 * @var integer|array specifies the length limit of the value to be validated.
+	 * This can be specified in one of the following forms:
+	 *
+	 * - an integer: the exact length that the value should be of;
+	 * - an array of one element: the minimum length that the value should be of. For example, `array(8)`.
+	 *   This will overwrite [[min]].
+	 * - an array of two elements: the minimum and maximum lengths that the value should be of.
+	 *   For example, `array(8, 128)`. This will overwrite both [[min]] and [[max]].
+	 */
+	public $length;
+	/**
+	 * @var integer maximum length. If not set, it means no maximum length limit.
 	 */
 	public $max;
 	/**
-	 * @var integer minimum length. Defaults to null, meaning no minimum limit.
+	 * @var integer minimum length. If not set, it means no minimum length limit.
 	 */
 	public $min;
-	/**
-	 * @var integer exact length. Defaults to null, meaning no exact length limit.
-	 */
-	public $is;
 	/**
 	 * @var string user-defined error message used when the value is not a string
 	 */
@@ -45,7 +52,7 @@ class StringValidator extends Validator
 	 */
 	public $tooLong;
 	/**
-	 * @var string user-defined error message used when the length of the value is not equal to [[is]].
+	 * @var string user-defined error message used when the length of the value is not equal to [[length]].
 	 */
 	public $notEqual;
 	/**
@@ -61,20 +68,29 @@ class StringValidator extends Validator
 	public function init()
 	{
 		parent::init();
+		if (is_array($this->length)) {
+			if (isset($this->length[0])) {
+				$this->min = $this->length[0];
+			}
+			if (isset($this->length[1])) {
+				$this->max = $this->length[1];
+			}
+			$this->length = null;
+		}
 		if ($this->encoding === null) {
 			$this->encoding = Yii::$app->charset;
 		}
 		if ($this->message === null) {
-			$this->message = Yii::t('yii|{attribute} must be a string.');
+			$this->message = Yii::t('yii', '{attribute} must be a string.');
 		}
 		if ($this->min !== null && $this->tooShort === null) {
-			$this->tooShort = Yii::t('yii|{attribute} should contain at least {min} characters.');
+			$this->tooShort = Yii::t('yii', '{attribute} should contain at least {min} characters.');
 		}
 		if ($this->max !== null && $this->tooLong === null) {
-			$this->tooLong = Yii::t('yii|{attribute} should contain at most {max} characters.');
+			$this->tooLong = Yii::t('yii', '{attribute} should contain at most {max} characters.');
 		}
-		if ($this->is !== null && $this->notEqual === null) {
-			$this->notEqual = Yii::t('yii|{attribute} should contain {length} characters.');
+		if ($this->length !== null && $this->notEqual === null) {
+			$this->notEqual = Yii::t('yii', '{attribute} should contain {length} characters.');
 		}
 	}
 
@@ -101,8 +117,8 @@ class StringValidator extends Validator
 		if ($this->max !== null && $length > $this->max) {
 			$this->addError($object, $attribute, $this->tooLong, array('{max}' => $this->max));
 		}
-		if ($this->is !== null && $length !== $this->is) {
-			$this->addError($object, $attribute, $this->notEqual, array('{length}' => $this->is));
+		if ($this->length !== null && $length !== $this->length) {
+			$this->addError($object, $attribute, $this->notEqual, array('{length}' => $this->length));
 		}
 	}
 
@@ -119,24 +135,24 @@ class StringValidator extends Validator
 		$length = mb_strlen($value, $this->encoding);
 		return ($this->min === null || $length >= $this->min)
 			&& ($this->max === null || $length <= $this->max)
-			&& ($this->is === null || $length === $this->is);
+			&& ($this->length === null || $length === $this->length);
 	}
 
 	/**
 	 * Returns the JavaScript needed for performing client-side validation.
 	 * @param \yii\base\Model $object the data object being validated
 	 * @param string $attribute the name of the attribute to be validated.
+	 * @param \yii\base\View $view the view object that is going to be used to render views or view files
+	 * containing a model form with this validator applied.
 	 * @return string the client-side validation script.
 	 */
-	public function clientValidateAttribute($object, $attribute)
+	public function clientValidateAttribute($object, $attribute, $view)
 	{
 		$label = $object->getAttributeLabel($attribute);
-		$value = $object->$attribute;
 
 		$options = array(
 			'message' => Html::encode(strtr($this->message, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 			))),
 		);
 
@@ -144,7 +160,6 @@ class StringValidator extends Validator
 			$options['min'] = $this->min;
 			$options['tooShort'] = Html::encode(strtr($this->tooShort, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 				'{min}' => $this->min,
 			)));
 		}
@@ -152,15 +167,13 @@ class StringValidator extends Validator
 			$options['max'] = $this->max;
 			$options['tooLong'] = Html::encode(strtr($this->tooLong, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 				'{max}' => $this->max,
 			)));
 		}
-		if ($this->is !== null) {
-			$options['is'] = $this->is;
+		if ($this->length !== null) {
+			$options['is'] = $this->length;
 			$options['notEqual'] = Html::encode(strtr($this->notEqual, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 				'{length}' => $this->is,
 			)));
 		}
@@ -168,7 +181,7 @@ class StringValidator extends Validator
 			$options['skipOnEmpty'] = 1;
 		}
 
+		ValidationAsset::register($view);
 		return 'yii.validation.string(value, messages, ' . json_encode($options) . ');';
 	}
 }
-

@@ -10,6 +10,7 @@ namespace yii\web;
 use Yii;
 use yii\base\InvalidConfigException;
 use yii\base\Object;
+use yii\base\View;
 
 /**
  * AssetBundle represents a collection of asset files, such as CSS, JS, images.
@@ -45,7 +46,7 @@ class AssetBundle extends Object
 	 * when it publishes the asset files from [[sourcePath]].
 	 *
 	 * If the bundle contains any assets that are specified in terms of relative file path,
-	 * then this property must be set either manually or automatically (by asset manager via
+	 * then this property must be set either manually or automatically (by [[AssetManager]] via
 	 * asset publishing).
 	 *
 	 * You can use either a directory or an alias of the directory.
@@ -102,7 +103,17 @@ class AssetBundle extends Object
 	public $publishOptions = array();
 
 	/**
+	 * @param View $view
+	 * @return AssetBundle the registered asset bundle instance
+	 */
+	public static function register($view)
+	{
+		return $view->registerAssetBundle(get_called_class());
+	}
+
+	/**
 	 * Initializes the bundle.
+	 * If you override this method, make sure you call the parent implementation in the last.
 	 */
 	public function init()
 	{
@@ -119,7 +130,6 @@ class AssetBundle extends Object
 
 	/**
 	 * Registers the CSS and JS files with the given view.
-	 * This method will first register all dependent asset bundles.
 	 * It will then try to convert non-CSS or JS files (e.g. LESS, Sass) into the corresponding
 	 * CSS or JS files using [[AssetManager::converter|asset converter]].
 	 * @param \yii\base\View $view the view that the asset files to be registered with.
@@ -128,17 +138,13 @@ class AssetBundle extends Object
 	 */
 	public function registerAssets($view)
 	{
-		foreach ($this->depends as $name) {
-			$view->registerAssetBundle($name);
-		}
-
 		$this->publish($view->getAssetManager());
 
 		foreach ($this->js as $js) {
-			$view->registerJsFile($js, $this->jsOptions);
+			$view->registerJsFile($this->baseUrl . '/' . $js, $this->jsOptions);
 		}
 		foreach ($this->css as $css) {
-			$view->registerCssFile($css, $this->cssOptions);
+			$view->registerCssFile($this->baseUrl . '/' . $css, $this->cssOptions);
 		}
 	}
 
@@ -150,7 +156,7 @@ class AssetBundle extends Object
 	 */
 	public function publish($am)
 	{
-		if ($this->sourcePath !== null) {
+		if ($this->sourcePath !== null && !isset($this->basePath, $this->baseUrl)) {
 			list ($this->basePath, $this->baseUrl) = $am->publish($this->sourcePath, $this->publishOptions);
 		}
 		$converter = $am->getConverter();

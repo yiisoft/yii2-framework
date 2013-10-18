@@ -33,9 +33,9 @@ use yii\base\InvalidParamException;
  * at appropriate places in the application code to check if the current user
  * has the needed permission for an operation.
  *
- * @property array $roles Roles (name=>Item).
- * @property array $tasks Tasks (name=>Item).
- * @property array $operations Operations (name=>Item).
+ * @property Item[] $operations Operations (name => AuthItem). This property is read-only.
+ * @property Item[] $roles Roles (name => AuthItem). This property is read-only.
+ * @property Item[] $tasks Tasks (name => AuthItem). This property is read-only.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @author Alexander Kochetov <creocoder@gmail.com>
@@ -107,7 +107,7 @@ abstract class Manager extends Component
 	 * This is a shortcut method to [[Manager::getItems()]].
 	 * @param mixed $userId the user ID. If not null, only the roles directly assigned to the user
 	 * will be returned. Otherwise, all roles will be returned.
-	 * @return Item[] roles (name=>AuthItem)
+	 * @return Item[] roles (name => AuthItem)
 	 */
 	public function getRoles($userId = null)
 	{
@@ -119,7 +119,7 @@ abstract class Manager extends Component
 	 * This is a shortcut method to [[Manager::getItems()]].
 	 * @param mixed $userId the user ID. If not null, only the tasks directly assigned to the user
 	 * will be returned. Otherwise, all tasks will be returned.
-	 * @return Item[] tasks (name=>AuthItem)
+	 * @return Item[] tasks (name => AuthItem)
 	 */
 	public function getTasks($userId = null)
 	{
@@ -131,7 +131,7 @@ abstract class Manager extends Component
 	 * This is a shortcut method to [[Manager::getItems()]].
 	 * @param mixed $userId the user ID. If not null, only the operations directly assigned to the user
 	 * will be returned. Otherwise, all operations will be returned.
-	 * @return Item[] operations (name=>AuthItem)
+	 * @return Item[] operations (name => AuthItem)
 	 */
 	public function getOperations($userId = null)
 	{
@@ -161,7 +161,7 @@ abstract class Manager extends Component
 	{
 		static $types = array('operation', 'task', 'role');
 		if ($parentType < $childType) {
-			throw new InvalidParamException("Cannot add an item of type '$types[$childType]' to an item of type '$types[$parentType]'.");
+			throw new InvalidParamException("Cannot add an item of type '{$types[$childType]}' to an item of type '{$types[$parentType]}'.");
 		}
 	}
 

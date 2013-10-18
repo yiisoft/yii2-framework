@@ -16,7 +16,7 @@ use yii\base\Component;
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
-class AssetConverter extends Component implements IAssetConverter
+class AssetConverter extends Component implements AssetConverterInterface
 {
 	/**
 	 * @var array the commands that are used to perform the asset conversion.
@@ -34,10 +34,9 @@ class AssetConverter extends Component implements IAssetConverter
 	 * Converts a given asset file into a CSS or JS file.
 	 * @param string $asset the asset file path, relative to $basePath
 	 * @param string $basePath the directory the $asset is relative to.
-	 * @param string $baseUrl the URL corresponding to $basePath
-	 * @return string the URL to the converted asset file.
+	 * @return string the converted asset file path, relative to $basePath.
 	 */
-	public function convert($asset, $basePath, $baseUrl)
+	public function convert($asset, $basePath)
 	{
 		$pos = strrpos($asset, '.');
 		if ($pos !== false) {
@@ -48,15 +47,15 @@ class AssetConverter extends Component implements IAssetConverter
 				if (@filemtime("$basePath/$result") < filemtime("$basePath/$asset")) {
 					$output = array();
 					$command = strtr($command, array(
-						'{from}' => "$basePath/$asset",
-						'{to}' => "$basePath/$result",
+						'{from}' => escapeshellarg("$basePath/$asset"),
+						'{to}' => escapeshellarg("$basePath/$result"),
 					));
 					exec($command, $output);
-					Yii::info("Converted $asset into $result: " . implode("\n", $output), __METHOD__);
+					Yii::trace("Converted $asset into $result: " . implode("\n", $output), __METHOD__);
 				}
-				return "$baseUrl/$result";
+				return $result;
 			}
 		}
-		return "$baseUrl/$asset";
+		return $asset;
 	}
 }

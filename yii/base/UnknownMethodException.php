@@ -20,7 +20,6 @@ class UnknownMethodException extends Exception
 	 */
 	public function getName()
 	{
-		return \Yii::t('yii|Unknown Method');
+		return \Yii::t('yii', 'Unknown Method');
 	}
 }
-

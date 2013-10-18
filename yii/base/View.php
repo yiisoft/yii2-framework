@@ -8,14 +8,21 @@
 namespace yii\base;
 
 use Yii;
-use yii\base\Application;
 use yii\helpers\FileHelper;
 use yii\helpers\Html;
+use yii\web\JqueryAsset;
+use yii\web\AssetBundle;
+use yii\widgets\Block;
+use yii\widgets\ContentDecorator;
+use yii\widgets\FragmentCache;
 
 /**
  * View represents a view object in the MVC pattern.
  *
  * View provides a set of methods (e.g. [[render()]]) for rendering purpose.
+ *
+ * @property \yii\web\AssetManager $assetManager The asset manager. Defaults to the "assetManager" application
+ * component.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -23,13 +30,21 @@ use yii\helpers\Html;
 class View extends Component
 {
 	/**
-	 * @event ViewEvent an event that is triggered by [[beginPage()]].
+	 * @event Event an event that is triggered by [[beginPage()]].
 	 */
 	const EVENT_BEGIN_PAGE = 'beginPage';
 	/**
-	 * @event ViewEvent an event that is triggered by [[endPage()]].
+	 * @event Event an event that is triggered by [[endPage()]].
 	 */
 	const EVENT_END_PAGE = 'endPage';
+	/**
+	 * @event Event an event that is triggered by [[beginBody()]].
+	 */
+	const EVENT_BEGIN_BODY = 'beginBody';
+	/**
+	 * @event Event an event that is triggered by [[endBody()]].
+	 */
+	const EVENT_END_BODY = 'endBody';
 	/**
 	 * @event ViewEvent an event that is triggered by [[renderFile()]] right before it renders a view file.
 	 */
@@ -55,17 +70,22 @@ class View extends Component
 	 */
 	const POS_END = 3;
 	/**
+	 * The location of registered JavaScript code block.
+	 * This means the JavaScript code block will be enclosed within `jQuery(document).ready()`.
+	 */
+	const POS_READY = 4;
+	/**
 	 * This is internally used as the placeholder for receiving the content registered for the head section.
 	 */
-	const PL_HEAD = '<![CDATA[YII-BLOCK-HEAD]]>';
+	const PH_HEAD = '<![CDATA[YII-BLOCK-HEAD]]>';
 	/**
 	 * This is internally used as the placeholder for receiving the content registered for the beginning of the body section.
 	 */
-	const PL_BODY_BEGIN = '<![CDATA[YII-BLOCK-BODY-BEGIN]]>';
+	const PH_BODY_BEGIN = '<![CDATA[YII-BLOCK-BODY-BEGIN]]>';
 	/**
 	 * This is internally used as the placeholder for receiving the content registered for the end of the body section.
 	 */
-	const PL_BODY_END = '<![CDATA[YII-BLOCK-BODY-END]]>';
+	const PH_BODY_END = '<![CDATA[YII-BLOCK-BODY-END]]>';
 
 
 	/**
@@ -76,25 +96,27 @@ class View extends Component
 	/**
 	 * @var mixed custom parameters that are shared among view templates.
 	 */
-	public $params;
+	public $params = array();
 	/**
 	 * @var array a list of available renderers indexed by their corresponding supported file extensions.
 	 * Each renderer may be a view renderer object or the configuration for creating the renderer object.
-	 * The default setting supports both Smarty and Twig (their corresponding file extension is "tpl"
-	 * and "twig" respectively. Please refer to [[SmartyRenderer]] and [[TwigRenderer]] on how to install
-	 * the needed libraries for these template engines.
+	 * For example, the following configuration enables both Smarty and Twig view renderers:
+	 *
+	 * ~~~
+	 * array(
+	 *     'tpl' => array(
+	 *         'class' => 'yii\smarty\ViewRenderer',
+	 *      ),
+	 *     'twig' => array(
+	 *         'class' => 'yii\twig\ViewRenderer',
+	 *     ),
+	 * )
+	 * ~~~
 	 *
 	 * If no renderer is available for the given view file, the view file will be treated as a normal PHP
 	 * and rendered via [[renderPhpFile()]].
 	 */
-	public $renderers = array(
-		'tpl' => array(
-			'class' => 'yii\renderers\SmartyRenderer',
-		),
-		'twig' => array(
-			'class' => 'yii\renderers\TwigRenderer',
-		),
-	);
+	public $renderers;
 	/**
 	 * @var Theme|array the theme object or the configuration array for creating the theme object.
 	 * If not set, it means theming is not enabled.
@@ -108,12 +130,6 @@ class View extends Component
 	 */
 	public $blocks;
 	/**
-	 * @var Widget[] the widgets that are currently being rendered (not ended). This property
-	 * is maintained by [[beginWidget()]] and [[endWidget()]] methods. Do not modify it directly.
-	 * @internal
-	 */
-	public $widgetStack = array();
-	/**
 	 * @var array a list of currently active fragment cache widgets. This property
 	 * is used internally to implement the content caching feature. Do not modify it directly.
 	 * @internal
@@ -126,11 +142,11 @@ class View extends Component
 	 */
 	public $dynamicPlaceholders = array();
 	/**
-	 * @var array the registered asset bundles. The keys are the bundle names, and the values
-	 * are the corresponding [[AssetBundle]] objects.
+	 * @var AssetBundle[] list of the registered asset bundles. The keys are the bundle names, and the values
+	 * are the registered [[AssetBundle]] objects.
 	 * @see registerAssetBundle
 	 */
-	public $assetBundles;
+	public $assetBundles = array();
 	/**
 	 * @var string the page title
 	 */
@@ -174,6 +190,9 @@ class View extends Component
 	{
 		parent::init();
 		if (is_array($this->theme)) {
+			if (!isset($this->theme['class'])) {
+				$this->theme['class'] = 'yii\base\Theme';
+			}
 			$this->theme = Yii::createObject($this->theme);
 		}
 	}
@@ -228,10 +247,10 @@ class View extends Component
 	public function renderFile($viewFile, $params = array(), $context = null)
 	{
 		$viewFile = Yii::getAlias($viewFile);
+		if ($this->theme !== null) {
+			$viewFile = $this->theme->applyTo($viewFile);
+		}
 		if (is_file($viewFile)) {
-			if ($this->theme !== null) {
-				$viewFile = $this->theme->applyTo($viewFile);
-			}
 			$viewFile = FileHelper::localize($viewFile);
 		} else {
 			throw new InvalidParamException("The view file does not exist: $viewFile");
@@ -253,6 +272,7 @@ class View extends Component
 				$renderer = $this->renderers[$ext];
 				$output = $renderer->render($this, $viewFile, $params);
 			} else {
+				Yii::trace("Rendering view file: $viewFile", __METHOD__);
 				$output = $this->renderPhpFile($viewFile, $params);
 			}
 			$this->afterRender($viewFile, $output);
@@ -364,93 +384,19 @@ class View extends Component
 	}
 
 	/**
-	 * Creates a widget.
-	 * This method will use [[Yii::createObject()]] to create the widget.
-	 * @param string $class the widget class name or path alias
-	 * @param array $properties the initial property values of the widget.
-	 * @return Widget the newly created widget instance
-	 */
-	public function createWidget($class, $properties = array())
-	{
-		$properties['class'] = $class;
-		if (!isset($properties['view'])) {
-			$properties['view'] = $this;
-		}
-		return Yii::createObject($properties);
-	}
-
-	/**
-	 * Creates and runs a widget.
-	 * Compared with [[createWidget()]], this method does one more thing: it will
-	 * run the widget after it is created.
-	 * @param string $class the widget class name or path alias
-	 * @param array $properties the initial property values of the widget.
-	 * @param boolean $captureOutput whether to capture the output of the widget and return it as a string
-	 * @return string|Widget if $captureOutput is true, the output of the widget will be returned;
-	 * otherwise the widget object will be returned.
-	 */
-	public function widget($class, $properties = array(), $captureOutput = false)
-	{
-		if ($captureOutput) {
-			ob_start();
-			ob_implicit_flush(false);
-			$widget = $this->createWidget($class, $properties);
-			$widget->run();
-			return ob_get_clean();
-		} else {
-			$widget = $this->createWidget($class, $properties);
-			$widget->run();
-			return $widget;
-		}
-	}
-
-	/**
-	 * Begins a widget.
-	 * This method is similar to [[createWidget()]] except that it will expect a matching
-	 * [[endWidget()]] call after this.
-	 * @param string $class the widget class name or path alias
-	 * @param array $properties the initial property values of the widget.
-	 * @return Widget the widget instance
-	 */
-	public function beginWidget($class, $properties = array())
-	{
-		$widget = $this->createWidget($class, $properties);
-		$this->widgetStack[] = $widget;
-		return $widget;
-	}
-
-	/**
-	 * Ends a widget.
-	 * Note that the rendering result of the widget is directly echoed out.
-	 * If you want to capture the rendering result of a widget, you may use
-	 * [[createWidget()]] and [[Widget::run()]].
-	 * @return Widget the widget instance
-	 * @throws InvalidCallException if [[beginWidget()]] and [[endWidget()]] calls are not properly nested
-	 */
-	public function endWidget()
-	{
-		$widget = array_pop($this->widgetStack);
-		if ($widget instanceof Widget) {
-			$widget->run();
-			return $widget;
-		} else {
-			throw new InvalidCallException("Unmatched beginWidget() and endWidget() calls.");
-		}
-	}
-
-	/**
 	 * Begins recording a block.
-	 * This method is a shortcut to beginning [[yii\widgets\Block]]
+	 * This method is a shortcut to beginning [[Block]]
 	 * @param string $id the block ID.
 	 * @param boolean $renderInPlace whether to render the block content in place.
 	 * Defaults to false, meaning the captured block will not be displayed.
-	 * @return \yii\widgets\Block the Block widget instance
+	 * @return Block the Block widget instance
 	 */
 	public function beginBlock($id, $renderInPlace = false)
 	{
-		return $this->beginWidget('yii\widgets\Block', array(
+		return Block::begin(array(
 			'id' => $id,
 			'renderInPlace' => $renderInPlace,
+			'view' => $this,
 		));
 	}
 
@@ -459,31 +405,32 @@ class View extends Component
 	 */
 	public function endBlock()
 	{
-		$this->endWidget();
+		Block::end();
 	}
 
 	/**
 	 * Begins the rendering of content that is to be decorated by the specified view.
 	 * This method can be used to implement nested layout. For example, a layout can be embedded
-	 * in another layout file specified as '@app/view/layouts/base' like the following:
+	 * in another layout file specified as '@app/view/layouts/base.php' like the following:
 	 *
 	 * ~~~
-	 * <?php $this->beginContent('@app/view/layouts/base'); ?>
+	 * <?php $this->beginContent('@app/view/layouts/base.php'); ?>
 	 * ...layout content here...
 	 * <?php $this->endContent(); ?>
 	 * ~~~
 	 *
 	 * @param string $viewFile the view file that will be used to decorate the content enclosed by this widget.
 	 * This can be specified as either the view file path or path alias.
-	 * @param array $params the variables (name=>value) to be extracted and made available in the decorative view.
-	 * @return \yii\widgets\ContentDecorator the ContentDecorator widget instance
-	 * @see \yii\widgets\ContentDecorator
+	 * @param array $params the variables (name => value) to be extracted and made available in the decorative view.
+	 * @return ContentDecorator the ContentDecorator widget instance
+	 * @see ContentDecorator
 	 */
 	public function beginContent($viewFile, $params = array())
 	{
-		return $this->beginWidget('yii\widgets\ContentDecorator', array(
+		return ContentDecorator::begin(array(
 			'viewFile' => $viewFile,
 			'params' => $params,
+			'view' => $this,
 		));
 	}
 
@@ -492,7 +439,7 @@ class View extends Component
 	 */
 	public function endContent()
 	{
-		$this->endWidget();
+		ContentDecorator::end();
 	}
 
 	/**
@@ -503,22 +450,23 @@ class View extends Component
 	 * A typical usage of fragment caching is as follows,
 	 *
 	 * ~~~
-	 * if($this->beginCache($id)) {
+	 * if ($this->beginCache($id)) {
 	 *     // ...generate content here
 	 *     $this->endCache();
 	 * }
 	 * ~~~
 	 *
 	 * @param string $id a unique ID identifying the fragment to be cached.
-	 * @param array $properties initial property values for [[\yii\widgets\FragmentCache]]
+	 * @param array $properties initial property values for [[FragmentCache]]
 	 * @return boolean whether you should generate the content for caching.
 	 * False if the cached version is available.
 	 */
 	public function beginCache($id, $properties = array())
 	{
 		$properties['id'] = $id;
-		/** @var $cache \yii\widgets\FragmentCache */
-		$cache = $this->beginWidget('yii\widgets\FragmentCache', $properties);
+		$properties['view'] = $this;
+		/** @var $cache FragmentCache */
+		$cache = FragmentCache::begin($properties);
 		if ($cache->getCachedContent() !== false) {
 			$this->endCache();
 			return false;
@@ -532,7 +480,7 @@ class View extends Component
 	 */
 	public function endCache()
 	{
-		$this->endWidget();
+		FragmentCache::end();
 	}
 
 
@@ -575,14 +523,16 @@ class View extends Component
 		$this->trigger(self::EVENT_END_PAGE);
 
 		$content = ob_get_clean();
+		foreach(array_keys($this->assetBundles) as $bundle) {
+			$this->registerAssetFiles($bundle);
+		}
 		echo strtr($content, array(
-			self::PL_HEAD => $this->renderHeadHtml(),
-			self::PL_BODY_BEGIN => $this->renderBodyBeginHtml(),
-			self::PL_BODY_END => $this->renderBodyEndHtml(),
+			self::PH_HEAD => $this->renderHeadHtml(),
+			self::PH_BODY_BEGIN => $this->renderBodyBeginHtml(),
+			self::PH_BODY_END => $this->renderBodyEndHtml(),
 		));
 
 		unset(
-			$this->assetBundles,
 			$this->metaTags,
 			$this->linkTags,
 			$this->css,
@@ -593,11 +543,30 @@ class View extends Component
 	}
 
 	/**
+	 * Registers all files provided by an asset bundle including depending bundles files.
+	 * Removes a bundle from [[assetBundles]] once registered.
+	 * @param string $name name of the bundle to register
+	 */
+	private function registerAssetFiles($name)
+	{
+		if (!isset($this->assetBundles[$name])) {
+			return;
+		}
+		$bundle = $this->assetBundles[$name];
+		foreach($bundle->depends as $dep) {
+			$this->registerAssetFiles($dep);
+		}
+		$bundle->registerAssets($this);
+		unset($this->assetBundles[$name]);
+	}
+
+	/**
 	 * Marks the beginning of an HTML body section.
 	 */
 	public function beginBody()
 	{
-		echo self::PL_BODY_BEGIN;
+		echo self::PH_BODY_BEGIN;
+		$this->trigger(self::EVENT_BEGIN_BODY);
 	}
 
 	/**
@@ -605,7 +574,8 @@ class View extends Component
 	 */
 	public function endBody()
 	{
-		echo self::PL_BODY_END;
+		$this->trigger(self::EVENT_END_BODY);
+		echo self::PH_BODY_END;
 	}
 
 	/**
@@ -613,30 +583,51 @@ class View extends Component
 	 */
 	public function head()
 	{
-		echo self::PL_HEAD;
+		echo self::PH_HEAD;
 	}
 
 	/**
 	 * Registers the named asset bundle.
 	 * All dependent asset bundles will be registered.
 	 * @param string $name the name of the asset bundle.
+	 * @param integer|null $position if set, this forces a minimum position for javascript files.
+	 * This will adjust depending assets javascript file position or fail if requirement can not be met.
+	 * If this is null, asset bundles position settings will not be changed.
+	 * See [[registerJsFile]] for more details on javascript position.
+	 * @return AssetBundle the registered asset bundle instance
 	 * @throws InvalidConfigException if the asset bundle does not exist or a circular dependency is detected
 	 */
-	public function registerAssetBundle($name)
+	public function registerAssetBundle($name, $position = null)
 	{
 		if (!isset($this->assetBundles[$name])) {
 			$am = $this->getAssetManager();
 			$bundle = $am->getBundle($name);
-			if ($bundle !== null) {
-				$this->assetBundles[$name] = false;
-				$bundle->registerAssets($this);
-				$this->assetBundles[$name] = true;
-			} else {
-				throw new InvalidConfigException("Unknown asset bundle: $name");
+			$this->assetBundles[$name] = false;
+			// register dependencies
+			$pos = isset($bundle->jsOptions['position']) ? $bundle->jsOptions['position'] : null;
+			foreach ($bundle->depends as $dep) {
+				$this->registerAssetBundle($dep, $pos);
 			}
+			$this->assetBundles[$name] = $bundle;
 		} elseif ($this->assetBundles[$name] === false) {
 			throw new InvalidConfigException("A circular dependency is detected for bundle '$name'.");
+		} else {
+			$bundle = $this->assetBundles[$name];
 		}
+
+		if ($position !== null) {
+			$pos = isset($bundle->jsOptions['position']) ? $bundle->jsOptions['position'] : null;
+			if ($pos === null) {
+				$bundle->jsOptions['position'] = $pos = $position;
+			} elseif ($pos > $position) {
+				throw new InvalidConfigException("An asset bundle that depends on '$name' has a higher javascript file position configured than '$name'.");
+			}
+			// update position for all dependencies
+			foreach ($bundle->depends as $dep) {
+				$this->registerAssetBundle($dep, $pos);
+			}
+		}
+		return $bundle;
 	}
 
 	/**
@@ -681,7 +672,7 @@ class View extends Component
 	 */
 	public function registerCss($css, $options = array(), $key = null)
 	{
-		$key = $key ?: $css;
+		$key = $key ?: md5($css);
 		$this->css[$key] = Html::style($css, $options);
 	}
 
@@ -702,28 +693,32 @@ class View extends Component
 	/**
 	 * Registers a JS code block.
 	 * @param string $js the JS code block to be registered
-	 * @param array $options the HTML attributes for the script tag. A special option
-	 * named "position" is supported which specifies where the JS script tag should be inserted
-	 * in a page. The possible values of "position" are:
+	 * @param integer $position the position at which the JS script tag should be inserted
+	 * in a page. The possible values are:
 	 *
 	 * - [[POS_HEAD]]: in the head section
 	 * - [[POS_BEGIN]]: at the beginning of the body section
 	 * - [[POS_END]]: at the end of the body section
+	 * - [[POS_READY]]: enclosed within jQuery(document).ready(). This is the default value.
+	 *   Note that by using this position, the method will automatically register the jQuery js file.
 	 *
 	 * @param string $key the key that identifies the JS code block. If null, it will use
 	 * $js as the key. If two JS code blocks are registered with the same key, the latter
 	 * will overwrite the former.
 	 */
-	public function registerJs($js, $options = array(), $key = null)
+	public function registerJs($js, $position = self::POS_READY, $key = null)
 	{
-		$position = isset($options['position']) ? $options['position'] : self::POS_END;
-		unset($options['position']);
-		$key = $key ?: $js;
-		$this->js[$position][$key] = Html::script($js, $options);
+		$key = $key ?: md5($js);
+		$this->js[$position][$key] = $js;
+		if ($position === self::POS_READY) {
+			JqueryAsset::register($this);
+		}
 	}
 
 	/**
 	 * Registers a JS file.
+	 * Please note that when this file depends on other JS files to be registered before,
+	 * for example jQuery, you should use [[registerAssetBundle]] instead.
 	 * @param string $url the JS file to be registered.
 	 * @param array $options the HTML attributes for the script tag. A special option
 	 * named "position" is supported which specifies where the JS script tag should be inserted
@@ -731,7 +726,7 @@ class View extends Component
 	 *
 	 * - [[POS_HEAD]]: in the head section
 	 * - [[POS_BEGIN]]: at the beginning of the body section
-	 * - [[POS_END]]: at the end of the body section
+	 * - [[POS_END]]: at the end of the body section. This is the default value.
 	 *
 	 * @param string $key the key that identifies the JS script file. If null, it will use
 	 * $url as the key. If two JS files are registered with the same key, the latter
@@ -756,6 +751,13 @@ class View extends Component
 		if (!empty($this->metaTags)) {
 			$lines[] = implode("\n", $this->metaTags);
 		}
+
+		$request = Yii::$app->getRequest();
+		if ($request instanceof \yii\web\Request && $request->enableCsrfValidation) {
+			$lines[] = Html::tag('meta', '', array('name' => 'csrf-var', 'content' => $request->csrfVar));
+			$lines[] = Html::tag('meta', '', array('name' => 'csrf-token', 'content' => $request->getCsrfToken()));
+		}
+
 		if (!empty($this->linkTags)) {
 			$lines[] = implode("\n", $this->linkTags);
 		}
@@ -769,9 +771,9 @@ class View extends Component
 			$lines[] = implode("\n", $this->jsFiles[self::POS_HEAD]);
 		}
 		if (!empty($this->js[self::POS_HEAD])) {
-			$lines[] = implode("\n", $this->js[self::POS_HEAD]);
+			$lines[] = Html::script(implode("\n", $this->js[self::POS_HEAD]), array('type' => 'text/javascript'));
 		}
-		return implode("\n", $lines);
+		return empty($lines) ? '' : implode("\n", $lines);
 	}
 
 	/**
@@ -786,9 +788,9 @@ class View extends Component
 			$lines[] = implode("\n", $this->jsFiles[self::POS_BEGIN]);
 		}
 		if (!empty($this->js[self::POS_BEGIN])) {
-			$lines[] = implode("\n", $this->js[self::POS_BEGIN]);
+			$lines[] = Html::script(implode("\n", $this->js[self::POS_BEGIN]), array('type' => 'text/javascript'));
 		}
-		return implode("\n", $lines);
+		return empty($lines) ? '' : implode("\n", $lines);
 	}
 
 	/**
@@ -803,8 +805,12 @@ class View extends Component
 			$lines[] = implode("\n", $this->jsFiles[self::POS_END]);
 		}
 		if (!empty($this->js[self::POS_END])) {
-			$lines[] = implode("\n", $this->js[self::POS_END]);
+			$lines[] = Html::script(implode("\n", $this->js[self::POS_END]), array('type' => 'text/javascript'));
 		}
-		return implode("\n", $lines);
+		if (!empty($this->js[self::POS_READY])) {
+			$js = "jQuery(document).ready(function(){\n" . implode("\n", $this->js[self::POS_READY]) . "\n});";
+			$lines[] = Html::script($js, array('type' => 'text/javascript'));
+		}
+		return empty($lines) ? '' : implode("\n", $lines);
 	}
 }

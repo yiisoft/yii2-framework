@@ -21,11 +21,25 @@ use yii\helpers\FileHelper;
  * with its themed version if part of its path matches one of the keys in [[pathMap]].
  * Then the matched part will be replaced with the corresponding array value.
  *
- * For example, if [[pathMap]] is `array('/www/views' => '/www/themes/basic')`,
- * then the themed version for a view file `/www/views/site/index.php` will be
- * `/www/themes/basic/site/index.php`.
+ * For example, if [[pathMap]] is `array('/web/views' => '/web/themes/basic')`,
+ * then the themed version for a view file `/web/views/site/index.php` will be
+ * `/web/themes/basic/site/index.php`.
  *
- * @property string $baseUrl the base URL for this theme. This is mainly used by [[getUrl()]].
+ * To use a theme, you should configure the [[View::theme|theme]] property of the "view" application
+ * component like the following:
+ *
+ * ~~~
+ * 'view' => array(
+ *     'theme' => array(
+ *         'basePath' => '@webroot/themes/basic',
+ *         'baseUrl' => '@web/themes/basic',
+ *     ),
+ * ),
+ * ~~~
+ *
+ * The above configuration specifies a theme located under the "themes/basic" directory of the Web folder
+ * that contains the entry script of the application. If your theme is designed to handle modules,
+ * you may configure the [[pathMap]] property like described above.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -58,7 +72,7 @@ class Theme extends Component
 	 */
 	public function init()
 	{
-	 	parent::init();
+		parent::init();
 		if (empty($this->pathMap)) {
 			if ($this->basePath !== null) {
 				$this->basePath = Yii::getAlias($this->basePath);

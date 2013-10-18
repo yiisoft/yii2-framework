@@ -7,6 +7,9 @@
 
 namespace yii\db;
 
+use Yii;
+use yii\base\Component;
+
 /**
  * Query represents a SELECT SQL statement in a way that is independent of DBMS.
  *
@@ -32,7 +35,7 @@ namespace yii\db;
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
-class Query extends \yii\base\Component
+class Query extends Component
 {
 	/**
 	 * Sort ascending
@@ -40,7 +43,7 @@ class Query extends \yii\base\Component
 	 */
 	const SORT_ASC = false;
 	/**
-	 * Sort ascending
+	 * Sort descending
 	 * @see orderBy
 	 */
 	const SORT_DESC = true;
@@ -124,9 +127,16 @@ class Query extends \yii\base\Component
 	public $union;
 	/**
 	 * @var array list of query parameter values indexed by parameter placeholders.
-	 * For example, `array(':name'=>'Dan', ':age'=>31)`.
+	 * For example, `array(':name' => 'Dan', ':age' => 31)`.
 	 */
 	public $params;
+	/**
+	 * @var string|callable $column the name of the column by which the query results should be indexed by.
+	 * This can also be a callable (e.g. anonymous function) that returns the index value based on the given
+	 * row data. For more details, see [[indexBy()]]. This property is only used by [[all()]].
+	 */
+	public $indexBy;
+
 
 	/**
 	 * Creates a DB command that can be used to execute this query.
@@ -137,10 +147,173 @@ class Query extends \yii\base\Component
 	public function createCommand($db = null)
 	{
 		if ($db === null) {
-			$db = \Yii::$app->db;
+			$db = Yii::$app->getDb();
 		}
-		$sql = $db->getQueryBuilder()->build($this);
-		return $db->createCommand($sql, $this->params);
+		list ($sql, $params) = $db->getQueryBuilder()->build($this);
+		return $db->createCommand($sql, $params);
+	}
+
+	/**
+	 * Sets the [[indexBy]] property.
+	 * @param string|callable $column the name of the column by which the query results should be indexed by.
+	 * This can also be a callable (e.g. anonymous function) that returns the index value based on the given
+	 * row data. The signature of the callable should be:
+	 *
+	 * ~~~
+	 * function ($row)
+	 * {
+	 *     // return the index value corresponding to $row
+	 * }
+	 * ~~~
+	 *
+	 * @return static the query object itself
+	 */
+	public function indexBy($column)
+	{
+		$this->indexBy = $column;
+		return $this;
+	}
+
+	/**
+	 * Executes the query and returns all results as an array.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return array the query results. If the query results in nothing, an empty array will be returned.
+	 */
+	public function all($db = null)
+	{
+		$rows = $this->createCommand($db)->queryAll();
+		if ($this->indexBy === null) {
+			return $rows;
+		}
+		$result = array();
+		foreach ($rows as $row) {
+			if (is_string($this->indexBy)) {
+				$key = $row[$this->indexBy];
+			} else {
+				$key = call_user_func($this->indexBy, $row);
+			}
+			$result[$key] = $row;
+		}
+		return $result;
+	}
+
+	/**
+	 * Executes the query and returns a single row of result.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return array|boolean the first row (in terms of an array) of the query result. False is returned if the query
+	 * results in nothing.
+	 */
+	public function one($db = null)
+	{
+		return $this->createCommand($db)->queryOne();
+	}
+
+	/**
+	 * Returns the query result as a scalar value.
+	 * The value returned will be the first column in the first row of the query results.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return string|boolean the value of the first column in the first row of the query result.
+	 * False is returned if the query result is empty.
+	 */
+	public function scalar($db = null)
+	{
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Executes the query and returns the first column of the result.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return array the first column of the query result. An empty array is returned if the query results in nothing.
+	 */
+	public function column($db = null)
+	{
+		return $this->createCommand($db)->queryColumn();
+	}
+
+	/**
+	 * Returns the number of records.
+	 * @param string $q the COUNT expression. Defaults to '*'.
+	 * Make sure you properly quote column names in the expression.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return integer number of records
+	 */
+	public function count($q = '*', $db = null)
+	{
+		$this->select = array("COUNT($q)");
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Returns the sum of the specified column values.
+	 * @param string $q the column name or expression.
+	 * Make sure you properly quote column names in the expression.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return integer the sum of the specified column values
+	 */
+	public function sum($q, $db = null)
+	{
+		$this->select = array("SUM($q)");
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Returns the average of the specified column values.
+	 * @param string $q the column name or expression.
+	 * Make sure you properly quote column names in the expression.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return integer the average of the specified column values.
+	 */
+	public function average($q, $db = null)
+	{
+		$this->select = array("AVG($q)");
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Returns the minimum of the specified column values.
+	 * @param string $q the column name or expression.
+	 * Make sure you properly quote column names in the expression.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return integer the minimum of the specified column values.
+	 */
+	public function min($q, $db = null)
+	{
+		$this->select = array("MIN($q)");
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Returns the maximum of the specified column values.
+	 * @param string $q the column name or expression.
+	 * Make sure you properly quote column names in the expression.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return integer the maximum of the specified column values.
+	 */
+	public function max($q, $db = null)
+	{
+		$this->select = array("MAX($q)");
+		return $this->createCommand($db)->queryScalar();
+	}
+
+	/**
+	 * Returns a value indicating whether the query result contains any row of data.
+	 * @param Connection $db the database connection used to generate the SQL statement.
+	 * If this parameter is not given, the `db` application component will be used.
+	 * @return boolean whether the query result contains any row of data.
+	 */
+	public function exists($db = null)
+	{
+		$this->select = array(new Expression('1'));
+		return $this->scalar($db) !== false;
 	}
 
 	/**
@@ -152,7 +325,7 @@ class Query extends \yii\base\Component
 	 * (which means the column contains a DB expression).
 	 * @param string $option additional option that should be appended to the 'SELECT' keyword. For example,
 	 * in MySQL, the option 'SQL_CALC_FOUND_ROWS' can be used.
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 */
 	public function select($columns, $option = null)
 	{
@@ -167,7 +340,7 @@ class Query extends \yii\base\Component
 	/**
 	 * Sets the value indicating whether to SELECT DISTINCT or not.
 	 * @param bool $value whether to SELECT DISTINCT or not.
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 */
 	public function distinct($value = true)
 	{
@@ -182,7 +355,7 @@ class Query extends \yii\base\Component
 	 * Table names can contain schema prefixes (e.g. `'public.tbl_user'`) and/or table aliases (e.g. `'tbl_user u'`).
 	 * The method will automatically quote the table names unless it contains some parenthesis
 	 * (which means the table is given as a sub-query or DB expression).
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 */
 	public function from($tables)
 	{
@@ -210,9 +383,9 @@ class Query extends \yii\base\Component
 	 * an `IN` expression will be generated. And if a value is null, `IS NULL` will be used
 	 * in the generated expression. Below are some examples:
 	 *
-	 * - `array('type'=>1, 'status'=>2)` generates `(type=1) AND (status=2)`.
-	 * - `array('id'=>array(1,2,3), 'status'=>2)` generates `(id IN (1,2,3)) AND (status=2)`.
-	 * - `array('status'=>null) generates `status IS NULL`.
+	 * - `array('type' => 1, 'status' => 2)` generates `(type = 1) AND (status = 2)`.
+	 * - `array('id' => array(1, 2, 3), 'status' => 2)` generates `(id IN (1, 2, 3)) AND (status = 2)`.
+	 * - `array('status' => null) generates `status IS NULL`.
 	 *
 	 * A condition in operator format generates the SQL expression according to the specified operator, which
 	 * can be one of the followings:
@@ -234,7 +407,7 @@ class Query extends \yii\base\Component
 	 *
 	 * - `in`: operand 1 should be a column or DB expression, and operand 2 be an array representing
 	 * the range of the values that the column or DB expression should be in. For example,
-	 * `array('in', 'id', array(1,2,3))` will generate `id IN (1,2,3)`.
+	 * `array('in', 'id', array(1, 2, 3))` will generate `id IN (1, 2, 3)`.
 	 * The method will properly quote the column name and escape values in the range.
 	 *
 	 * - `not in`: similar to the `in` operator except that `IN` is replaced with `NOT IN` in the generated condition.
@@ -257,8 +430,8 @@ class Query extends \yii\base\Component
 	 * the `NOT LIKE` predicates.
 	 *
 	 * @param string|array $condition the conditions that should be put in the WHERE part.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see andWhere()
 	 * @see orWhere()
 	 */
@@ -274,8 +447,8 @@ class Query extends \yii\base\Component
 	 * The new condition and the existing one will be joined using the 'AND' operator.
 	 * @param string|array $condition the new WHERE condition. Please refer to [[where()]]
 	 * on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see where()
 	 * @see orWhere()
 	 */
@@ -295,8 +468,8 @@ class Query extends \yii\base\Component
 	 * The new condition and the existing one will be joined using the 'OR' operator.
 	 * @param string|array $condition the new WHERE condition. Please refer to [[where()]]
 	 * on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see where()
 	 * @see andWhere()
 	 */
@@ -321,7 +494,7 @@ class Query extends \yii\base\Component
 	 * (which means the table is given as a sub-query or DB expression).
 	 * @param string|array $on the join condition that should appear in the ON part.
 	 * Please refer to [[where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
+	 * @param array $params the parameters (name => value) to be bound to the query.
 	 * @return Query the query object itself
 	 */
 	public function join($type, $table, $on = '', $params = array())
@@ -338,7 +511,7 @@ class Query extends \yii\base\Component
 	 * (which means the table is given as a sub-query or DB expression).
 	 * @param string|array $on the join condition that should appear in the ON part.
 	 * Please refer to [[where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
+	 * @param array $params the parameters (name => value) to be bound to the query.
 	 * @return Query the query object itself
 	 */
 	public function innerJoin($table, $on = '', $params = array())
@@ -355,7 +528,7 @@ class Query extends \yii\base\Component
 	 * (which means the table is given as a sub-query or DB expression).
 	 * @param string|array $on the join condition that should appear in the ON part.
 	 * Please refer to [[where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query
+	 * @param array $params the parameters (name => value) to be bound to the query
 	 * @return Query the query object itself
 	 */
 	public function leftJoin($table, $on = '', $params = array())
@@ -372,7 +545,7 @@ class Query extends \yii\base\Component
 	 * (which means the table is given as a sub-query or DB expression).
 	 * @param string|array $on the join condition that should appear in the ON part.
 	 * Please refer to [[where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query
+	 * @param array $params the parameters (name => value) to be bound to the query
 	 * @return Query the query object itself
 	 */
 	public function rightJoin($table, $on = '', $params = array())
@@ -387,7 +560,7 @@ class Query extends \yii\base\Component
 	 * Columns can be specified in either a string (e.g. "id, name") or an array (e.g. array('id', 'name')).
 	 * The method will automatically quote the column names unless a column contains some parenthesis
 	 * (which means the column contains a DB expression).
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 * @see addGroupBy()
 	 */
 	public function groupBy($columns)
@@ -405,7 +578,7 @@ class Query extends \yii\base\Component
 	 * Columns can be specified in either a string (e.g. "id, name") or an array (e.g. array('id', 'name')).
 	 * The method will automatically quote the column names unless a column contains some parenthesis
 	 * (which means the column contains a DB expression).
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 * @see groupBy()
 	 */
 	public function addGroupBy($columns)
@@ -425,8 +598,8 @@ class Query extends \yii\base\Component
 	 * Sets the HAVING part of the query.
 	 * @param string|array $condition the conditions to be put after HAVING.
 	 * Please refer to [[where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see andHaving()
 	 * @see orHaving()
 	 */
@@ -442,8 +615,8 @@ class Query extends \yii\base\Component
 	 * The new condition and the existing one will be joined using the 'AND' operator.
 	 * @param string|array $condition the new HAVING condition. Please refer to [[where()]]
 	 * on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see having()
 	 * @see orHaving()
 	 */
@@ -463,8 +636,8 @@ class Query extends \yii\base\Component
 	 * The new condition and the existing one will be joined using the 'OR' operator.
 	 * @param string|array $condition the new HAVING condition. Please refer to [[where()]]
 	 * on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
-	 * @return Query the query object itself
+	 * @param array $params the parameters (name => value) to be bound to the query.
+	 * @return static the query object itself
 	 * @see having()
 	 * @see andHaving()
 	 */
@@ -486,7 +659,7 @@ class Query extends \yii\base\Component
 	 * (e.g. `array('id' => Query::SORT_ASC, 'name' => Query::SORT_DESC)`).
 	 * The method will automatically quote the column names unless a column contains some parenthesis
 	 * (which means the column contains a DB expression).
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 * @see addOrderBy()
 	 */
 	public function orderBy($columns)
@@ -502,7 +675,7 @@ class Query extends \yii\base\Component
 	 * (e.g. `array('id' => Query::SORT_ASC, 'name' => Query::SORT_DESC)`).
 	 * The method will automatically quote the column names unless a column contains some parenthesis
 	 * (which means the column contains a DB expression).
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 * @see orderBy()
 	 */
 	public function addOrderBy($columns)
@@ -536,8 +709,8 @@ class Query extends \yii\base\Component
 
 	/**
 	 * Sets the LIMIT part of the query.
-	 * @param integer $limit the limit
-	 * @return Query the query object itself
+	 * @param integer $limit the limit. Use null or negative value to disable limit.
+	 * @return static the query object itself
 	 */
 	public function limit($limit)
 	{
@@ -547,8 +720,8 @@ class Query extends \yii\base\Component
 
 	/**
 	 * Sets the OFFSET part of the query.
-	 * @param integer $offset the offset
-	 * @return Query the query object itself
+	 * @param integer $offset the offset. Use null or negative value to disable offset.
+	 * @return static the query object itself
 	 */
 	public function offset($offset)
 	{
@@ -559,7 +732,7 @@ class Query extends \yii\base\Component
 	/**
 	 * Appends a SQL statement using UNION operator.
 	 * @param string|Query $sql the SQL statement to be appended using UNION
-	 * @return Query the query object itself
+	 * @return static the query object itself
 	 */
 	public function union($sql)
 	{
@@ -570,8 +743,8 @@ class Query extends \yii\base\Component
 	/**
 	 * Sets the parameters to be bound to the query.
 	 * @param array $params list of query parameter values indexed by parameter placeholders.
-	 * For example, `array(':name'=>'Dan', ':age'=>31)`.
-	 * @return Query the query object itself
+	 * For example, `array(':name' => 'Dan', ':age' => 31)`.
+	 * @return static the query object itself
 	 * @see addParams()
 	 */
 	public function params($params)
@@ -583,8 +756,8 @@ class Query extends \yii\base\Component
 	/**
 	 * Adds additional parameters to be bound to the query.
 	 * @param array $params list of query parameter values indexed by parameter placeholders.
-	 * For example, `array(':name'=>'Dan', ':age'=>31)`.
-	 * @return Query the query object itself
+	 * For example, `array(':name' => 'Dan', ':age' => 31)`.
+	 * @return static the query object itself
 	 * @see params()
 	 */
 	public function addParams($params)

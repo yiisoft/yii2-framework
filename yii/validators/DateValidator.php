@@ -38,7 +38,7 @@ class DateValidator extends Validator
 	{
 		parent::init();
 		if ($this->message === null) {
-			$this->message = Yii::t('yii|The format of {attribute} is invalid.');
+			$this->message = Yii::t('yii', 'The format of {attribute} is invalid.');
 		}
 	}
 
@@ -58,7 +58,7 @@ class DateValidator extends Validator
 		$date = DateTime::createFromFormat($this->format, $value);
 		if ($date === false) {
 			$this->addError($object, $attribute, $this->message);
-		} elseif ($this->timestampAttribute !== false) {
+		} elseif ($this->timestampAttribute !== null) {
 			$object->{$this->timestampAttribute} = $date->getTimestamp();
 		}
 	}
@@ -73,4 +73,3 @@ class DateValidator extends Validator
 		return DateTime::createFromFormat($this->format, $value) !== false;
 	}
 }
-

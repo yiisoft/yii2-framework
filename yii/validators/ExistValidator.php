@@ -45,7 +45,7 @@ class ExistValidator extends Validator
 	{
 		parent::init();
 		if ($this->message === null) {
-			$this->message = Yii::t('yii|{attribute} is invalid.');
+			$this->message = Yii::t('yii', '{attribute} is invalid.');
 		}
 	}
 
@@ -66,7 +66,7 @@ class ExistValidator extends Validator
 		}
 
 		/** @var $className \yii\db\ActiveRecord */
-		$className = $this->className === null ? get_class($object) : Yii::import($this->className);
+		$className = $this->className === null ? get_class($object) : $this->className;
 		$attributeName = $this->attributeName === null ? $attribute : $this->attributeName;
 		$query = $className::find();
 		$query->where(array($attributeName => $value));
@@ -99,4 +99,3 @@ class ExistValidator extends Validator
 		return $query->exists();
 	}
 }
-

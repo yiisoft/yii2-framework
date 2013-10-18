@@ -7,6 +7,8 @@
 
 namespace yii\db;
 
+use PDO;
+use Yii;
 use yii\base\Component;
 use yii\base\InvalidConfigException;
 use yii\base\NotSupportedException;
@@ -87,13 +89,16 @@ use yii\caching\Cache;
  * )
  * ~~~
  *
+ * @property string $driverName Name of the DB driver. This property is read-only.
  * @property boolean $isActive Whether the DB connection is established. This property is read-only.
- * @property Transaction $transaction The currently active transaction. Null if no active transaction.
- * @property Schema $schema The database schema information for the current connection.
- * @property QueryBuilder $queryBuilder The query builder.
- * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the sequence object.
- * @property string $driverName Name of the DB driver currently being used.
- * @property array $querySummary The statistical results of SQL queries.
+ * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the
+ * sequence object. This property is read-only.
+ * @property QueryBuilder $queryBuilder The query builder for the current DB connection. This property is
+ * read-only.
+ * @property Schema $schema The schema information for the database opened by this connection. This property
+ * is read-only.
+ * @property Transaction $transaction The currently active transaction. Null if no active transaction. This
+ * property is read-only.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -121,14 +126,14 @@ class Connection extends Component
 	 */
 	public $password = '';
 	/**
-	 * @var array PDO attributes (name=>value) that should be set when calling [[open()]]
+	 * @var array PDO attributes (name => value) that should be set when calling [[open()]]
 	 * to establish a DB connection. Please refer to the
 	 * [PHP manual](http://www.php.net/manual/en/function.PDO-setAttribute.php) for
 	 * details about available attributes.
 	 */
 	public $attributes;
 	/**
-	 * @var \PDO the PHP PDO instance associated with this DB connection.
+	 * @var PDO the PHP PDO instance associated with this DB connection.
 	 * This property is mainly managed by [[open()]] and [[close()]] methods.
 	 * When a DB connection is active, this property will represent a PDO instance;
 	 * otherwise, it will be null.
@@ -196,7 +201,7 @@ class Connection extends Component
 	public $queryCache = 'cache';
 	/**
 	 * @var string the charset used for database connection. The property is only used
-	 * for MySQL and PostgreSQL databases. Defaults to null, meaning using default charset
+	 * for MySQL, PostgreSQL and CUBRID databases. Defaults to null, meaning using default charset
 	 * as specified by the database.
 	 *
 	 * Note that if you're using GBK or BIG5 then it's highly recommended to
@@ -213,13 +218,6 @@ class Connection extends Component
 	 */
 	public $emulatePrepare;
 	/**
-	 * @var boolean whether to enable profiling for the SQL statements being executed.
-	 * Defaults to false. This should be mainly enabled and used during development
-	 * to find out the bottleneck of SQL executions.
-	 * @see getStats
-	 */
-	public $enableProfiling = false;
-	/**
 	 * @var string the common prefix or suffix for table names. If a table name is given
 	 * as `{{%TableName}}`, then the percentage character `%` will be replaced with this
 	 * property value. For example, `{{%post}}` becomes `{{tbl_post}}` if this property is
@@ -229,7 +227,7 @@ class Connection extends Component
 	/**
 	 * @var array mapping between PDO driver names and [[Schema]] classes.
 	 * The keys of the array are PDO driver names while the values the corresponding
-	 * schema class name or configuration. Please refer to [[\Yii::createObject()]] for
+	 * schema class name or configuration. Please refer to [[Yii::createObject()]] for
 	 * details on how to specify a configuration.
 	 *
 	 * This property is mainly used by [[getSchema()]] when fetching the database schema information.
@@ -242,10 +240,11 @@ class Connection extends Component
 		'mysql' => 'yii\db\mysql\Schema',    // MySQL
 		'sqlite' => 'yii\db\sqlite\Schema',  // sqlite 3
 		'sqlite2' => 'yii\db\sqlite\Schema', // sqlite 2
-		'mssql' => 'yii\db\dao\mssql\Schema', // Mssql driver on windows hosts
-		'sqlsrv' => 'yii\db\mssql\Schema',   // Mssql
+		'sqlsrv' => 'yii\db\mssql\Schema',   // newer MSSQL driver on MS Windows hosts
 		'oci' => 'yii\db\oci\Schema',        // Oracle driver
-		'dblib' => 'yii\db\mssql\Schema',    // dblib drivers on linux (and maybe others os) hosts
+		'mssql' => 'yii\db\mssql\Schema',    // older MSSQL driver on MS Windows hosts
+		'dblib' => 'yii\db\mssql\Schema',    // dblib drivers on GNU/Linux (and maybe other OSes) hosts
+		'cubrid' => 'yii\db\cubrid\Schema',  // CUBRID
 	);
 	/**
 	 * @var Transaction the currently active transaction
@@ -256,15 +255,6 @@ class Connection extends Component
 	 */
 	private $_schema;
 
-	/**
-	 * Closes the connection when this component is being serialized.
-	 * @return array
-	 */
-	public function __sleep()
-	{
-		$this->close();
-		return array_keys(get_object_vars($this));
-	}
 
 	/**
 	 * Returns a value indicating whether the DB connection is established.
@@ -312,15 +302,16 @@ class Connection extends Component
 			if (empty($this->dsn)) {
 				throw new InvalidConfigException('Connection::dsn cannot be empty.');
 			}
+			$token = 'Opening DB connection: ' . $this->dsn;
 			try {
-				\Yii::trace('Opening DB connection: ' . $this->dsn, __METHOD__);
+				Yii::trace($token, __METHOD__);
+				Yii::beginProfile($token, __METHOD__);
 				$this->pdo = $this->createPdoInstance();
 				$this->initConnection();
-			}
-			catch (\PDOException $e) {
-				\Yii::error("Failed to open DB connection ({$this->dsn}): " . $e->getMessage(), __METHOD__);
-				$message = YII_DEBUG ? 'Failed to open DB connection: ' . $e->getMessage() : 'Failed to open DB connection.';
-				throw new Exception($message, $e->errorInfo, (int)$e->getCode());
+				Yii::endProfile($token, __METHOD__);
+			} catch (\PDOException $e) {
+				Yii::endProfile($token, __METHOD__);
+				throw new Exception($e->getMessage(), $e->errorInfo, (int)$e->getCode(), $e);
 			}
 		}
 	}
@@ -332,7 +323,7 @@ class Connection extends Component
 	public function close()
 	{
 		if ($this->pdo !== null) {
-			\Yii::trace('Closing DB connection: ' . $this->dsn, __METHOD__);
+			Yii::trace('Closing DB connection: ' . $this->dsn, __METHOD__);
 			$this->pdo = null;
 			$this->_schema = null;
 			$this->_transaction = null;
@@ -344,11 +335,11 @@ class Connection extends Component
 	 * This method is called by [[open]] to establish a DB connection.
 	 * The default implementation will create a PHP PDO instance.
 	 * You may override this method if the default PDO needs to be adapted for certain DBMS.
-	 * @return \PDO the pdo instance
+	 * @return PDO the pdo instance
 	 */
 	protected function createPdoInstance()
 	{
-		$pdoClass = '\PDO';
+		$pdoClass = 'PDO';
 		if (($pos = strpos($this->dsn, ':')) !== false) {
 			$driver = strtolower(substr($this->dsn, 0, $pos));
 			if ($driver === 'mssql' || $driver === 'dblib' || $driver === 'sqlsrv') {
@@ -367,11 +358,11 @@ class Connection extends Component
 	 */
 	protected function initConnection()
 	{
-		$this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-		if ($this->emulatePrepare !== null && constant('\PDO::ATTR_EMULATE_PREPARES')) {
-			$this->pdo->setAttribute(\PDO::ATTR_EMULATE_PREPARES, $this->emulatePrepare);
+		$this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+		if ($this->emulatePrepare !== null && constant('PDO::ATTR_EMULATE_PREPARES')) {
+			$this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, $this->emulatePrepare);
 		}
-		if ($this->charset !== null && in_array($this->getDriverName(), array('pgsql', 'mysql', 'mysqli'))) {
+		if ($this->charset !== null && in_array($this->getDriverName(), array('pgsql', 'mysql', 'mysqli', 'cubrid'))) {
 			$this->pdo->exec('SET NAMES ' . $this->pdo->quote($this->charset));
 		}
 		$this->trigger(self::EVENT_AFTER_OPEN);
@@ -428,7 +419,7 @@ class Connection extends Component
 		} else {
 			$driver = $this->getDriverName();
 			if (isset($this->schemaMap[$driver])) {
-				$this->_schema = \Yii::createObject($this->schemaMap[$driver]);
+				$this->_schema = Yii::createObject($this->schemaMap[$driver]);
 				$this->_schema->db = $this;
 				return $this->_schema;
 			} else {
@@ -510,19 +501,19 @@ class Connection extends Component
 	 * Processes a SQL statement by quoting table and column names that are enclosed within double brackets.
 	 * Tokens enclosed within double curly brackets are treated as table names, while
 	 * tokens enclosed within double square brackets are column names. They will be quoted accordingly.
-	 * Also, the percentage character "%" in a table name will be replaced with [[tablePrefix]].
+	 * Also, the percentage character "%" at the beginning or ending of a table name will be replaced
+	 * with [[tablePrefix]].
 	 * @param string $sql the SQL to be quoted
 	 * @return string the quoted SQL
 	 */
 	public function quoteSql($sql)
 	{
-		$db = $this;
-		return preg_replace_callback('/(\\{\\{([%\w\-\. ]+)\\}\\}|\\[\\[([\w\-\. ]+)\\]\\])/',
-			function($matches) use($db) {
+		return preg_replace_callback('/(\\{\\{(%?[\w\-\. ]+%?)\\}\\}|\\[\\[([\w\-\. ]+)\\]\\])/',
+			function ($matches) {
 				if (isset($matches[3])) {
-					return $db->quoteColumnName($matches[3]);
+					return $this->quoteColumnName($matches[3]);
 				} else {
-					return str_replace('%', $db->tablePrefix, $db->quoteTableName($matches[2]));
+					return str_replace('%', $this->tablePrefix, $this->quoteTableName($matches[2]));
 				}
 			}, $sql);
 	}
@@ -536,28 +527,8 @@ class Connection extends Component
 		if (($pos = strpos($this->dsn, ':')) !== false) {
 			return strtolower(substr($this->dsn, 0, $pos));
 		} else {
-			return strtolower($this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
+			$this->open();
+			return strtolower($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
 		}
-	}
-
-	/**
-	 * Returns the statistical results of SQL queries.
-	 * The results returned include the number of SQL statements executed and
-	 * the total time spent.
-	 * In order to use this method, [[enableProfiling]] has to be set true.
-	 * @return array the first element indicates the number of SQL statements executed,
-	 * and the second element the total time spent in SQL execution.
-	 * @see \yii\logging\Logger::getProfiling()
-	 */
-	public function getQuerySummary()
-	{
-		$logger = \Yii::getLogger();
-		$timings = $logger->getProfiling(array('yii\db\Command::query', 'yii\db\Command::execute'));
-		$count = count($timings);
-		$time = 0;
-		foreach ($timings as $timing) {
-			$time += $timing[1];
-		}
-		return array($count, $time);
 	}
 }

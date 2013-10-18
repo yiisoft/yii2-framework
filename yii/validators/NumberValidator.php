@@ -62,14 +62,14 @@ class NumberValidator extends Validator
 	{
 		parent::init();
 		if ($this->message === null) {
-			$this->message = $this->integerOnly ? Yii::t('yii|{attribute} must be an integer.')
-				: Yii::t('yii|{attribute} must be a number.');
+			$this->message = $this->integerOnly ? Yii::t('yii', '{attribute} must be an integer.')
+				: Yii::t('yii', '{attribute} must be a number.');
 		}
 		if ($this->min !== null && $this->tooSmall === null) {
-			$this->tooSmall = Yii::t('yii|{attribute} must be no less than {min}.');
+			$this->tooSmall = Yii::t('yii', '{attribute} must be no less than {min}.');
 		}
 		if ($this->max !== null && $this->tooBig === null) {
-			$this->tooBig = Yii::t('yii|{attribute} must be no greater than {max}.');
+			$this->tooBig = Yii::t('yii', '{attribute} must be no greater than {max}.');
 		}
 	}
 
@@ -83,7 +83,7 @@ class NumberValidator extends Validator
 	{
 		$value = $object->$attribute;
 		if (is_array($value)) {
-			$this->addError($object, $attribute, Yii::t('yii|{attribute} is invalid.'));
+			$this->addError($object, $attribute, Yii::t('yii', '{attribute} is invalid.'));
 			return;
 		}
 		$pattern = $this->integerOnly ? $this->integerPattern : $this->numberPattern;
@@ -114,18 +114,18 @@ class NumberValidator extends Validator
 	 * Returns the JavaScript needed for performing client-side validation.
 	 * @param \yii\base\Model $object the data object being validated
 	 * @param string $attribute the name of the attribute to be validated.
+	 * @param \yii\base\View $view the view object that is going to be used to render views or view files
+	 * containing a model form with this validator applied.
 	 * @return string the client-side validation script.
 	 */
-	public function clientValidateAttribute($object, $attribute)
+	public function clientValidateAttribute($object, $attribute, $view)
 	{
 		$label = $object->getAttributeLabel($attribute);
-		$value = $object->$attribute;
 
 		$options = array(
 			'pattern' => new JsExpression($this->integerOnly ? $this->integerPattern : $this->numberPattern),
 			'message' => Html::encode(strtr($this->message, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 			))),
 		);
 
@@ -133,7 +133,6 @@ class NumberValidator extends Validator
 			$options['min'] = $this->min;
 			$options['tooSmall'] = Html::encode(strtr($this->tooSmall, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 				'{min}' => $this->min,
 			)));
 		}
@@ -141,7 +140,6 @@ class NumberValidator extends Validator
 			$options['max'] = $this->max;
 			$options['tooBig'] = Html::encode(strtr($this->tooBig, array(
 				'{attribute}' => $label,
-				'{value}' => $value,
 				'{max}' => $this->max,
 			)));
 		}
@@ -149,6 +147,7 @@ class NumberValidator extends Validator
 			$options['skipOnEmpty'] = 1;
 		}
 
+		ValidationAsset::register($view);
 		return 'yii.validation.number(value, messages, ' . Json::encode($options) . ');';
 	}
 }

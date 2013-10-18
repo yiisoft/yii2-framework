@@ -14,23 +14,24 @@ use yii\base\InvalidParamException;
 use yii\base\ModelEvent;
 use yii\base\UnknownMethodException;
 use yii\base\InvalidCallException;
-use yii\db\Connection;
-use yii\db\TableSchema;
-use yii\db\Expression;
 use yii\helpers\StringHelper;
+use yii\helpers\Inflector;
 
 /**
  * ActiveRecord is the base class for classes representing relational data in terms of objects.
  *
  * @include @yii/db/ActiveRecord.md
  *
- * @property Connection $db the database connection used by this AR class.
- * @property TableSchema $tableSchema the schema information of the DB table associated with this AR class.
- * @property array $oldAttributes the old attribute values (name-value pairs).
- * @property array $dirtyAttributes the changed attribute values (name-value pairs).
- * @property boolean $isNewRecord whether the record is new and should be inserted when calling [[save()]].
- * @property mixed $primaryKey the primary key value.
- * @property mixed $oldPrimaryKey the old primary key value.
+ * @property array $dirtyAttributes The changed attribute values (name-value pairs). This property is
+ * read-only.
+ * @property boolean $isNewRecord Whether the record is new and should be inserted when calling [[save()]].
+ * @property array $oldAttributes The old attribute values (name-value pairs).
+ * @property mixed $oldPrimaryKey The old primary key value. An array (column name => column value) is
+ * returned if the primary key is composite or `$asArray` is true. A string is returned otherwise (null will be
+ * returned if the key value is null). This property is read-only.
+ * @property mixed $primaryKey The primary key value. An array (column name => column value) is returned if
+ * the primary key is composite or `$asArray` is true. A string is returned otherwise (null will be returned if
+ * the key value is null). This property is read-only.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -72,6 +73,24 @@ class ActiveRecord extends Model
 	 * @event Event an event that is triggered after a record is deleted.
 	 */
 	const EVENT_AFTER_DELETE = 'afterDelete';
+
+	/**
+	 * The insert operation. This is mainly used when overriding [[transactions()]] to specify which operations are transactional.
+	 */
+	const OP_INSERT = 0x01;
+	/**
+	 * The update operation. This is mainly used when overriding [[transactions()]] to specify which operations are transactional.
+	 */
+	const OP_UPDATE = 0x02;
+	/**
+	 * The delete operation. This is mainly used when overriding [[transactions()]] to specify which operations are transactional.
+	 */
+	const OP_DELETE = 0x04;
+	/**
+	 * All three operations: insert, update, delete.
+	 * This is a shortcut of the expression: OP_INSERT | OP_UPDATE | OP_DELETE.
+	 */
+	const OP_ALL = 0x07;
 
 	/**
 	 * @var array attribute values indexed by attribute names
@@ -169,7 +188,7 @@ class ActiveRecord extends Model
 	 * @param array $attributes attribute values (name-value pairs) to be saved into the table
 	 * @param string|array $condition the conditions that will be put in the WHERE part of the UPDATE SQL.
 	 * Please refer to [[Query::where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
+	 * @param array $params the parameters (name => value) to be bound to the query.
 	 * @return integer the number of rows updated
 	 */
 	public static function updateAll($attributes, $condition = '', $params = array())
@@ -191,7 +210,7 @@ class ActiveRecord extends Model
 	 * Use negative values if you want to decrement the counters.
 	 * @param string|array $condition the conditions that will be put in the WHERE part of the UPDATE SQL.
 	 * Please refer to [[Query::where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
+	 * @param array $params the parameters (name => value) to be bound to the query.
 	 * Do not name the parameters as `:bp0`, `:bp1`, etc., because they are used internally by this method.
 	 * @return integer the number of rows updated
 	 */
@@ -219,7 +238,7 @@ class ActiveRecord extends Model
 	 *
 	 * @param string|array $condition the conditions that will be put in the WHERE part of the DELETE SQL.
 	 * Please refer to [[Query::where()]] on how to specify this parameter.
-	 * @param array $params the parameters (name=>value) to be bound to the query.
+	 * @param array $params the parameters (name => value) to be bound to the query.
 	 * @return integer the number of rows deleted
 	 */
 	public static function deleteAll($condition = '', $params = array())
@@ -245,23 +264,29 @@ class ActiveRecord extends Model
 
 	/**
 	 * Declares the name of the database table associated with this AR class.
-	 * By default this method returns the class name as the table name by calling [[StringHelper::camel2id()]]
+	 * By default this method returns the class name as the table name by calling [[Inflector::camel2id()]]
 	 * with prefix 'tbl_'. For example, 'Customer' becomes 'tbl_customer', and 'OrderItem' becomes
 	 * 'tbl_order_item'. You may override this method if the table is not named after this convention.
 	 * @return string the table name
 	 */
 	public static function tableName()
 	{
-		return 'tbl_' . StringHelper::camel2id(StringHelper::basename(get_called_class()), '_');
+		return 'tbl_' . Inflector::camel2id(StringHelper::basename(get_called_class()), '_');
 	}
 
 	/**
 	 * Returns the schema information of the DB table associated with this AR class.
 	 * @return TableSchema the schema information of the DB table associated with this AR class.
+	 * @throws InvalidConfigException if the table for the AR class does not exist.
 	 */
 	public static function getTableSchema()
 	{
-		return static::getDb()->getTableSchema(static::tableName());
+		$schema = static::getDb()->getTableSchema(static::tableName());
+		if ($schema !== null) {
+			return $schema;
+		} else {
+			throw new InvalidConfigException("The table does not exist: " . static::tableName());
+		}
 	}
 
 	/**
@@ -311,6 +336,38 @@ class ActiveRecord extends Model
 	}
 
 	/**
+	 * Declares which DB operations should be performed within a transaction in different scenarios.
+	 * The supported DB operations are: [[OP_INSERT]], [[OP_UPDATE]] and [[OP_DELETE]],
+	 * which correspond to the [[insert()]], [[update()]] and [[delete()]] methods, respectively.
+	 * By default, these methods are NOT enclosed in a DB transaction.
+	 *
+	 * In some scenarios, to ensure data consistency, you may want to enclose some or all of them
+	 * in transactions. You can do so by overriding this method and returning the operations
+	 * that need to be transactional. For example,
+	 *
+	 * ~~~
+	 * return array(
+	 *     'admin' => self::OP_INSERT,
+	 *     'api' => self::OP_INSERT | self::OP_UPDATE | self::OP_DELETE,
+	 *     // the above is equivalent to the following:
+	 *     // 'api' => self::OP_ALL,
+	 *
+	 * );
+	 * ~~~
+	 *
+	 * The above declaration specifies that in the "admin" scenario, the insert operation ([[insert()]])
+	 * should be done in a transaction; and in the "api" scenario, all the operations should be done
+	 * in a transaction.
+	 *
+	 * @return array the declarations of transactional operations. The array keys are scenarios names,
+	 * and the array values are the corresponding transaction operations.
+	 */
+	public function transactions()
+	{
+		return array();
+	}
+
+	/**
 	 * PHP getter magic method.
 	 * This method is overridden so that attributes and related objects can be accessed like properties.
 	 * @param string $name property name
@@ -345,7 +402,7 @@ class ActiveRecord extends Model
 	 */
 	public function __set($name, $value)
 	{
-		if (isset($this->_attributes[$name]) || isset($this->getTableSchema()->columns[$name])) {
+		if ($this->hasAttribute($name)) {
 			$this->_attributes[$name] = $value;
 		} else {
 			parent::__set($name, $value);
@@ -503,11 +560,26 @@ class ActiveRecord extends Model
 	 * Sets the named attribute value.
 	 * @param string $name the attribute name
 	 * @param mixed $value the attribute value.
+	 * @throws InvalidParamException if the named attribute does not exist.
 	 * @see hasAttribute
 	 */
 	public function setAttribute($name, $value)
 	{
-		$this->_attributes[$name] = $value;
+		if ($this->hasAttribute($name)) {
+			$this->_attributes[$name] = $value;
+		} else {
+			throw new InvalidParamException(get_class($this) . ' has no attribute named "' . $name . '".');
+		}
+	}
+
+	/**
+	 * Returns a value indicating whether the model has an attribute with the specified name.
+	 * @param string $name the name of the attribute
+	 * @return boolean whether the model has an attribute with the specified name.
+	 */
+	public function hasAttribute($name)
+	{
+		return isset($this->_attributes[$name]) || isset($this->getTableSchema()->columns[$name]);
 	}
 
 	/**
@@ -547,11 +619,16 @@ class ActiveRecord extends Model
 	 * Sets the old value of the named attribute.
 	 * @param string $name the attribute name
 	 * @param mixed $value the old attribute value.
+	 * @throws InvalidParamException if the named attribute does not exist.
 	 * @see hasAttribute
 	 */
 	public function setOldAttribute($name, $value)
 	{
-		$this->_oldAttributes[$name] = $value;
+		if (isset($this->_oldAttributes[$name]) || isset($this->getTableSchema()->columns[$name])) {
+			$this->_oldAttributes[$name] = $value;
+		} else {
+			throw new InvalidParamException(get_class($this) . ' has no attribute named "' . $name . '".');
+		}
 	}
 
 	/**
@@ -564,7 +641,7 @@ class ActiveRecord extends Model
 		if (isset($this->_attributes[$name], $this->_oldAttributes[$name])) {
 			return $this->_attributes[$name] !== $this->_oldAttributes[$name];
 		} else {
-			return isset($this->_attributes[$name]) || isset($this->_oldAttributes);
+			return isset($this->_attributes[$name]) || isset($this->_oldAttributes[$name]);
 		}
 	}
 
@@ -664,10 +741,39 @@ class ActiveRecord extends Model
 	 * @param array $attributes list of attributes that need to be saved. Defaults to null,
 	 * meaning all attributes that are loaded from DB will be saved.
 	 * @return boolean whether the attributes are valid and the record is inserted successfully.
+	 * @throws \Exception in case insert failed.
 	 */
 	public function insert($runValidation = true, $attributes = null)
 	{
-		if ($runValidation && !$this->validate($attributes) || !$this->beforeSave(true)) {
+		if ($runValidation && !$this->validate($attributes)) {
+			return false;
+		}
+		$db = static::getDb();
+		if ($this->isTransactional(self::OP_INSERT) && $db->getTransaction() === null) {
+			$transaction = $db->beginTransaction();
+			try {
+				$result = $this->insertInternal($attributes);
+				if ($result === false) {
+					$transaction->rollback();
+				} else {
+					$transaction->commit();
+				}
+			} catch (\Exception $e) {
+				$transaction->rollback();
+				throw $e;
+			}
+		} else {
+			$result = $this->insertInternal($attributes);
+		}
+		return $result;
+	}
+
+	/**
+	 * @see ActiveRecord::insert()
+	 */
+	private function insertInternal($attributes = null)
+	{
+		if (!$this->beforeSave(true)) {
 			return false;
 		}
 		$values = $this->getDirtyAttributes($attributes);
@@ -678,22 +784,23 @@ class ActiveRecord extends Model
 		}
 		$db = static::getDb();
 		$command = $db->createCommand()->insert($this->tableName(), $values);
-		if ($command->execute()) {
-			$table = $this->getTableSchema();
-			if ($table->sequenceName !== null) {
-				foreach ($table->primaryKey as $name) {
-					if (!isset($this->_attributes[$name])) {
-						$this->_oldAttributes[$name] = $this->_attributes[$name] = $db->getLastInsertID($table->sequenceName);
-						break;
-					}
+		if (!$command->execute()) {
+			return false;
+		}
+		$table = $this->getTableSchema();
+		if ($table->sequenceName !== null) {
+			foreach ($table->primaryKey as $name) {
+				if (!isset($this->_attributes[$name])) {
+					$this->_oldAttributes[$name] = $this->_attributes[$name] = $db->getLastInsertID($table->sequenceName);
+					break;
 				}
 			}
-			foreach ($values as $name => $value) {
-				$this->_oldAttributes[$name] = $value;
-			}
-			$this->afterSave(true);
-			return true;
 		}
+		foreach ($values as $name => $value) {
+			$this->_oldAttributes[$name] = $value;
+		}
+		$this->afterSave(true);
+		return true;
 	}
 
 	/**
@@ -744,39 +851,68 @@ class ActiveRecord extends Model
 	 * or [[beforeSave()]] stops the updating process.
 	 * @throws StaleObjectException if [[optimisticLock|optimistic locking]] is enabled and the data
 	 * being updated is outdated.
+	 * @throws \Exception in case update failed.
 	 */
 	public function update($runValidation = true, $attributes = null)
 	{
-		if ($runValidation && !$this->validate($attributes) || !$this->beforeSave(false)) {
+		if ($runValidation && !$this->validate($attributes)) {
+			return false;
+		}
+		$db = static::getDb();
+		if ($this->isTransactional(self::OP_UPDATE) && $db->getTransaction() === null) {
+			$transaction = $db->beginTransaction();
+			try {
+				$result = $this->updateInternal($attributes);
+				if ($result === false) {
+					$transaction->rollback();
+				} else {
+					$transaction->commit();
+				}
+			} catch (\Exception $e) {
+				$transaction->rollback();
+				throw $e;
+			}
+		} else {
+			$result = $this->updateInternal($attributes);
+		}
+		return $result;
+	}
+
+	/**
+	 * @see CActiveRecord::update()
+	 * @throws StaleObjectException
+	 */
+	private function updateInternal($attributes = null)
+	{
+		if (!$this->beforeSave(false)) {
 			return false;
 		}
 		$values = $this->getDirtyAttributes($attributes);
-		if (!empty($values)) {
-			$condition = $this->getOldPrimaryKey(true);
-			$lock = $this->optimisticLock();
-			if ($lock !== null) {
-				if (!isset($values[$lock])) {
-					$values[$lock] = $this->$lock + 1;
-				}
-				$condition[$lock] = $this->$lock;
-			}
-			// We do not check the return value of updateAll() because it's possible
-			// that the UPDATE statement doesn't change anything and thus returns 0.
-			$rows = $this->updateAll($values, $condition);
-
-			if ($lock !== null && !$rows) {
-				throw new StaleObjectException('The object being updated is outdated.');
-			}
-
-			foreach ($values as $name => $value) {
-				$this->_oldAttributes[$name] = $this->_attributes[$name];
-			}
-
+		if (empty($values)) {
 			$this->afterSave(false);
-			return $rows;
-		} else {
 			return 0;
 		}
+		$condition = $this->getOldPrimaryKey(true);
+		$lock = $this->optimisticLock();
+		if ($lock !== null) {
+			if (!isset($values[$lock])) {
+				$values[$lock] = $this->$lock + 1;
+			}
+			$condition[$lock] = $this->$lock;
+		}
+		// We do not check the return value of updateAll() because it's possible
+		// that the UPDATE statement doesn't change anything and thus returns 0.
+		$rows = $this->updateAll($values, $condition);
+
+		if ($lock !== null && !$rows) {
+			throw new StaleObjectException('The object being updated is outdated.');
+		}
+
+		foreach ($values as $name => $value) {
+			$this->_oldAttributes[$name] = $this->_attributes[$name];
+		}
+		$this->afterSave(false);
+		return $rows;
 	}
 
 	/**
@@ -826,27 +962,43 @@ class ActiveRecord extends Model
 	 * Note that it is possible the number of rows deleted is 0, even though the deletion execution is successful.
 	 * @throws StaleObjectException if [[optimisticLock|optimistic locking]] is enabled and the data
 	 * being deleted is outdated.
+	 * @throws \Exception in case delete failed.
 	 */
 	public function delete()
 	{
-		if ($this->beforeDelete()) {
-			// we do not check the return value of deleteAll() because it's possible
-			// the record is already deleted in the database and thus the method will return 0
-			$condition = $this->getOldPrimaryKey(true);
-			$lock = $this->optimisticLock();
-			if ($lock !== null) {
-				$condition[$lock] = $this->$lock;
+		$db = static::getDb();
+		$transaction = $this->isTransactional(self::OP_DELETE) && $db->getTransaction() === null ? $db->beginTransaction() : null;
+		try {
+			$result = false;
+			if ($this->beforeDelete()) {
+				// we do not check the return value of deleteAll() because it's possible
+				// the record is already deleted in the database and thus the method will return 0
+				$condition = $this->getOldPrimaryKey(true);
+				$lock = $this->optimisticLock();
+				if ($lock !== null) {
+					$condition[$lock] = $this->$lock;
+				}
+				$result = $this->deleteAll($condition);
+				if ($lock !== null && !$result) {
+					throw new StaleObjectException('The object being deleted is outdated.');
+				}
+				$this->_oldAttributes = null;
+				$this->afterDelete();
 			}
-			$rows = $this->deleteAll($condition);
-			if ($lock !== null && !$rows) {
-				throw new StaleObjectException('The object being deleted is outdated.');
+			if ($transaction !== null) {
+				if ($result === false) {
+					$transaction->rollback();
+				} else {
+					$transaction->commit();
+				}
 			}
-			$this->_oldAttributes = null;
-			$this->afterDelete();
-			return $rows;
-		} else {
-			return false;
+		} catch (\Exception $e) {
+			if ($transaction !== null) {
+				$transaction->rollback();
+			}
+			throw $e;
 		}
+		return $result;
 	}
 
 	/**
@@ -856,6 +1008,16 @@ class ActiveRecord extends Model
 	public function getIsNewRecord()
 	{
 		return $this->_oldAttributes === null;
+	}
+
+	/**
+	 * Sets the value indicating whether the record is new.
+	 * @param boolean $value whether the record is new and should be inserted when calling [[save()]].
+	 * @see getIsNewRecord
+	 */
+	public function setIsNewRecord($value)
+	{
+		$this->_oldAttributes = $value ? null : $this->_attributes;
 	}
 
 	/**
@@ -880,16 +1042,6 @@ class ActiveRecord extends Model
 	public function afterFind()
 	{
 		$this->trigger(self::EVENT_AFTER_FIND);
-	}
-
-	/**
-	 * Sets the value indicating whether the record is new.
-	 * @param boolean $value whether the record is new and should be inserted when calling [[save()]].
-	 * @see getIsNewRecord
-	 */
-	public function setIsNewRecord($value)
-	{
-		$this->_oldAttributes = $value ? null : $this->_attributes;
 	}
 
 	/**
@@ -1014,7 +1166,7 @@ class ActiveRecord extends Model
 	 * @param boolean $asArray whether to return the primary key value as an array. If true,
 	 * the return value will be an array with column names as keys and column values as values.
 	 * Note that for composite primary keys, an array will always be returned regardless of this parameter value.
-	 * @return mixed the primary key value. An array (column name=>column value) is returned if the primary key
+	 * @return mixed the primary key value. An array (column name => column value) is returned if the primary key
 	 * is composite or `$asArray` is true. A string is returned otherwise (null will be returned if
 	 * the key value is null).
 	 */
@@ -1040,7 +1192,7 @@ class ActiveRecord extends Model
 	 * @param boolean $asArray whether to return the primary key value as an array. If true,
 	 * the return value will be an array with column name as key and column value as value.
 	 * If this is false (default), a scalar value will be returned for non-composite primary key.
-	 * @return mixed the old primary key value. An array (column name=>column value) is returned if the primary key
+	 * @return mixed the old primary key value. An array (column name => column value) is returned if the primary key
 	 * is composite or `$asArray` is true. A string is returned otherwise (null will be returned if
 	 * the key value is null).
 	 */
@@ -1061,7 +1213,7 @@ class ActiveRecord extends Model
 	/**
 	 * Creates an active record object using a row of data.
 	 * This method is called by [[ActiveQuery]] to populate the query results
-	 * into Active Records.
+	 * into Active Records. It is not meant to be used to create new records.
 	 * @param array $row attribute values (name => value)
 	 * @return ActiveRecord the newly created active record.
 	 */
@@ -1124,7 +1276,7 @@ class ActiveRecord extends Model
 				return $relation;
 			}
 		} catch (UnknownMethodException $e) {
-			throw new InvalidParamException(get_class($this) . ' has no relation named "' . $name . '".');
+			throw new InvalidParamException(get_class($this) . ' has no relation named "' . $name . '".', 0, $e);
 		}
 	}
 
@@ -1152,6 +1304,9 @@ class ActiveRecord extends Model
 		$relation = $this->getRelation($name);
 
 		if ($relation->via !== null) {
+			if ($this->getIsNewRecord() || $model->getIsNewRecord()) {
+				throw new InvalidCallException('Unable to link models: both models must NOT be newly created.');
+			}
 			if (is_array($relation->via)) {
 				/** @var $viaRelation ActiveRelation */
 				list($viaName, $viaRelation) = $relation->via;
@@ -1293,15 +1448,14 @@ class ActiveRecord extends Model
 	 * @param string $class the class name to be namespaced
 	 * @return string the namespaced class name
 	 */
-	protected function getNamespacedClass($class)
+	protected static function getNamespacedClass($class)
 	{
 		if (strpos($class, '\\') === false) {
-			$primaryClass = get_class($this);
-			if (($pos = strrpos($primaryClass, '\\')) !== false) {
-				return substr($primaryClass, 0, $pos + 1) . $class;
-			}
+			$reflector = new \ReflectionClass(static::className());
+			return $reflector->getNamespaceName() . '\\' . $class;
+		} else {
+			return $class;
 		}
-		return $class;
 	}
 
 	/**
@@ -1335,5 +1489,17 @@ class ActiveRecord extends Model
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Returns a value indicating whether the specified operation is transactional in the current [[scenario]].
+	 * @param integer $operation the operation to check. Possible values are [[OP_INSERT]], [[OP_UPDATE]] and [[OP_DELETE]].
+	 * @return boolean whether the specified operation is transactional in the current [[scenario]].
+	 */
+	public function isTransactional($operation)
+	{
+		$scenario = $this->getScenario();
+		$transactions = $this->transactions();
+		return isset($transactions[$scenario]) && ($transactions[$scenario] & $operation);
 	}
 }

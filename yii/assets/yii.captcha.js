@@ -1,7 +1,7 @@
 /**
  * Yii Captcha widget.
  *
- * This is the JavaScript widget used by the yii\widgets\Captcha widget.
+ * This is the JavaScript widget used by the yii\captcha\Captcha widget.
  *
  * @link http://www.yiiframework.com/
  * @copyright Copyright (c) 2008 Yii Software LLC
@@ -51,8 +51,8 @@
 				dataType: 'json',
 				cache: false,
 				success: function(data) {
-					$e.attr('src', data['url']);
-					$('body').data(settings.hashKey, [data['hash1'], data['hash2']]);
+					$e.attr('src', data.url);
+					$('body').data(settings.hashKey, [data.hash1, data.hash2]);
 				}
 			});
 		},

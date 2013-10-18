@@ -35,6 +35,7 @@ use yii\base\NotSupportedException;
  * - `integer`: [[NumberValidator]]
  * - `match`: [[RegularExpressionValidator]]
  * - `required`: [[RequiredValidator]]
+ * - `safe`: [[SafeValidator]]
  * - `string`: [[StringValidator]]
  * - `unique`: [[UniqueValidator]]
  * - `url`: [[UrlValidator]]
@@ -49,7 +50,7 @@ abstract class Validator extends Component
 	 */
 	public static $builtInValidators = array(
 		'boolean' => 'yii\validators\BooleanValidator',
-		'captcha' => 'yii\validators\CaptchaValidator',
+		'captcha' => 'yii\captcha\CaptchaValidator',
 		'compare' => 'yii\validators\CompareValidator',
 		'date' => 'yii\validators\DateValidator',
 		'default' => 'yii\validators\DefaultValueValidator',
@@ -66,6 +67,7 @@ abstract class Validator extends Component
 		'match' => 'yii\validators\RegularExpressionValidator',
 		'number' => 'yii\validators\NumberValidator',
 		'required' => 'yii\validators\RequiredValidator',
+		'safe' => 'yii\validators\SafeValidator',
 		'string' => 'yii\validators\StringValidator',
 		'unique' => 'yii\validators\UniqueValidator',
 		'url' => 'yii\validators\UrlValidator',
@@ -74,7 +76,7 @@ abstract class Validator extends Component
 	/**
 	 * @var array list of attributes to be validated.
 	 */
-	public $attributes;
+	public $attributes = array();
 	/**
 	 * @var string the user-defined error message. It may contain the following placeholders which
 	 * will be replaced accordingly by the validator:
@@ -147,8 +149,8 @@ abstract class Validator extends Component
 			$params['class'] = __NAMESPACE__ . '\InlineValidator';
 			$params['method'] = $type;
 		} else {
-			if (isset(self::$builtInValidators[$type])) {
-				$type = self::$builtInValidators[$type];
+			if (isset(static::$builtInValidators[$type])) {
+				$type = static::$builtInValidators[$type];
 			}
 			if (is_array($type)) {
 				foreach ($type as $name => $value) {
@@ -179,7 +181,7 @@ abstract class Validator extends Component
 		}
 		foreach ($attributes as $attribute) {
 			$skip = $this->skipOnError && $object->hasErrors($attribute)
-				 || $this->skipOnEmpty && $this->isEmpty($object->$attribute);
+				|| $this->skipOnEmpty && $this->isEmpty($object->$attribute);
 			if (!$skip) {
 				$this->validateAttribute($object, $attribute);
 			}
@@ -211,11 +213,13 @@ abstract class Validator extends Component
 	 *
 	 * @param \yii\base\Model $object the data object being validated
 	 * @param string $attribute the name of the attribute to be validated.
+	 * @param \yii\base\View $view the view object that is going to be used to render views or view files
+	 * containing a model form with this validator applied.
 	 * @return string the client-side validation script. Null if the validator does not support
 	 * client-side validation.
 	 * @see \yii\web\ActiveForm::enableClientValidation
 	 */
-	public function clientValidateAttribute($object, $attribute)
+	public function clientValidateAttribute($object, $attribute, $view)
 	{
 		return null;
 	}

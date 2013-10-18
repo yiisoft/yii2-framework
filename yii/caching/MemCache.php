@@ -7,7 +7,6 @@
 
 namespace yii\caching;
 
-use yii\base\Exception;
 use yii\base\InvalidConfigException;
 
 /**
@@ -21,7 +20,7 @@ use yii\base\InvalidConfigException;
  * MemCache can be configured with a list of memcache servers by settings its [[servers]] property.
  * By default, MemCache assumes there is a memcache server running on localhost at port 11211.
  *
- * See [[Cache]] for common cache operations that ApcCache supports.
+ * See [[Cache]] for common cache operations that MemCache supports.
  *
  * Note, there is no security measure to protected data in memcache.
  * All data in memcache can be accessed by any process running in the system.
@@ -30,19 +29,19 @@ use yii\base\InvalidConfigException;
  *
  * ~~~
  * array(
- *     'components'=>array(
- *         'cache'=>array(
- *             'class'=>'MemCache',
- *             'servers'=>array(
+ *     'components' => array(
+ *         'cache' => array(
+ *             'class' => 'MemCache',
+ *             'servers' => array(
  *                 array(
- *                     'host'=>'server1',
- *                     'port'=>11211,
- *                     'weight'=>60,
+ *                     'host' => 'server1',
+ *                     'port' => 11211,
+ *                     'weight' => 60,
  *                 ),
  *                 array(
- *                     'host'=>'server2',
- *                     'port'=>11211,
- *                     'weight'=>40,
+ *                     'host' => 'server2',
+ *                     'port' => 11211,
+ *                     'weight' => 40,
  *                 ),
  *             ),
  *         ),
@@ -53,8 +52,10 @@ use yii\base\InvalidConfigException;
  * In the above, two memcache servers are used: server1 and server2. You can configure more properties of
  * each server, such as `persistent`, `weight`, `timeout`. Please see [[MemCacheServer]] for available options.
  *
- * @property \Memcache|\Memcached $memCache The memcache instance (or memcached if [[useMemcached]] is true) used by this component.
- * @property MemCacheServer[] $servers List of memcache server configurations.
+ * @property \Memcache|\Memcached $memcache The memcache (or memcached) object used by this cache component.
+ * This property is read-only.
+ * @property MemCacheServer[] $servers List of memcache server configurations. Note that the type of this
+ * property differs in getter and setter. See [[getServers()]] and [[setServers()]] for details.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -86,20 +87,38 @@ class MemCache extends Cache
 		parent::init();
 		$servers = $this->getServers();
 		$cache = $this->getMemCache();
-		if (count($servers)) {
+		if (empty($servers)) {
+			$cache->addServer('127.0.0.1', 11211);
+		} else {
+			if (!$this->useMemcached) {
+				// different version of memcache may have different number of parameters for the addServer method.
+				$class = new \ReflectionClass($cache);
+				$paramCount = $class->getMethod('addServer')->getNumberOfParameters();
+			}
 			foreach ($servers as $server) {
 				if ($server->host === null) {
-					throw new Exception("The 'host' property must be specified for every memcache server.");
+					throw new InvalidConfigException("The 'host' property must be specified for every memcache server.");
 				}
 				if ($this->useMemcached) {
 					$cache->addServer($server->host, $server->port, $server->weight);
 				} else {
-					$cache->addServer($server->host, $server->port, $server->persistent,
-						$server->weight, $server->timeout, $server->retryInterval, $server->status);
+					// $timeout is used for memcache versions that do not have timeoutms parameter
+					$timeout = (int) ($server->timeout / 1000) + (($server->timeout % 1000 > 0) ? 1 : 0);
+					if ($paramCount === 9) {
+						$cache->addServer(
+							$server->host, $server->port, $server->persistent,
+							$server->weight, $timeout, $server->retryInterval,
+							$server->status, $server->failureCallback, $server->timeout
+						);
+					} else {
+						$cache->addServer(
+							$server->host, $server->port, $server->persistent,
+							$server->weight, $timeout, $server->retryInterval,
+							$server->status, $server->failureCallback
+						);
+					}
 				}
 			}
-		} else {
-			$cache->addServer('127.0.0.1', 11211);
 		}
 	}
 
@@ -145,7 +164,7 @@ class MemCache extends Cache
 	 * Retrieves a value from cache with a specified key.
 	 * This is the implementation of the method declared in the parent class.
 	 * @param string $key a unique key identifying the cached value
-	 * @return string the value stored in cache, false if the value is not in the cache or expired.
+	 * @return string|boolean the value stored in cache, false if the value is not in the cache or expired.
 	 */
 	protected function getValue($key)
 	{

@@ -10,14 +10,14 @@ namespace yii\db;
 /**
  * Migration is the base class for representing a database migration.
  *
- * Migration is designed to be used together with the "yiic migrate" command.
+ * Migration is designed to be used together with the "yii migrate" command.
  *
  * Each child class of Migration represents an individual database migration which
  * is identified by the child class name.
  *
  * Within each migration, the [[up()]] method should be overwritten to contain the logic
  * for "upgrading" the database; while the [[down()]] method for the "downgrading"
- * logic. The "yiic migrate" command manages all available migrations in an application.
+ * logic. The "yii migrate" command manages all available migrations in an application.
  *
  * If the database supports transactions, you may also overwrite [[safeUp()]] and
  * [[safeDown()]] so that if anything wrong happens during the upgrading or downgrading,
@@ -132,7 +132,8 @@ class Migration extends \yii\base\Component
 	 * Executes a SQL statement.
 	 * This method executes the specified SQL statement using [[db]].
 	 * @param string $sql the SQL statement to be executed
-	 * @param array $params input parameters (name=>value) for the SQL execution. See [[Command::execute()]] for more details.
+	 * @param array $params input parameters (name => value) for the SQL execution.
+	 * See [[Command::execute()]] for more details.
 	 */
 	public function execute($sql, $params = array())
 	{
@@ -146,7 +147,7 @@ class Migration extends \yii\base\Component
 	 * Creates and executes an INSERT SQL statement.
 	 * The method will properly escape the column names, and bind the values to be inserted.
 	 * @param string $table the table that new rows will be inserted into.
-	 * @param array $columns the column data (name=>value) to be inserted into the table.
+	 * @param array $columns the column data (name => value) to be inserted into the table.
 	 */
 	public function insert($table, $columns)
 	{
@@ -160,8 +161,8 @@ class Migration extends \yii\base\Component
 	 * Creates and executes an UPDATE SQL statement.
 	 * The method will properly escape the column names and bind the values to be updated.
 	 * @param string $table the table to be updated.
-	 * @param array $columns the column data (name=>value) to be updated.
-	 * @param mixed $condition the conditions that will be put in the WHERE part. Please
+	 * @param array $columns the column data (name => value) to be updated.
+	 * @param array|string $condition the conditions that will be put in the WHERE part. Please
 	 * refer to [[Query::where()]] on how to specify conditions.
 	 * @param array $params the parameters to be bound to the query.
 	 */
@@ -176,7 +177,7 @@ class Migration extends \yii\base\Component
 	/**
 	 * Creates and executes a DELETE SQL statement.
 	 * @param string $table the table where the data will be deleted from.
-	 * @param mixed $condition the conditions that will be put in the WHERE part. Please
+	 * @param array|string $condition the conditions that will be put in the WHERE part. Please
 	 * refer to [[Query::where()]] on how to specify conditions.
 	 * @param array $params the parameters to be bound to the query.
 	 */
@@ -191,7 +192,7 @@ class Migration extends \yii\base\Component
 	/**
 	 * Builds and executes a SQL statement for creating a new DB table.
 	 *
-	 * The columns in the new  table should be specified as name-definition pairs (e.g. 'name'=>'string'),
+	 * The columns in the new  table should be specified as name-definition pairs (e.g. 'name' => 'string'),
 	 * where name stands for a column name which will be properly quoted by the method, and definition
 	 * stands for the column type which can contain an abstract DB type.
 	 *
@@ -201,7 +202,7 @@ class Migration extends \yii\base\Component
 	 * put into the generated SQL.
 	 *
 	 * @param string $table the name of the table to be created. The name will be properly quoted by the method.
-	 * @param array $columns the columns (name=>definition) in the new table.
+	 * @param array $columns the columns (name => definition) in the new table.
 	 * @param string $options additional SQL fragment that will be appended to the generated SQL.
 	 */
 	public function createTable($table, $columns, $options = null)
@@ -305,6 +306,35 @@ class Migration extends \yii\base\Component
 		echo "    > alter column $column in table $table to $type ...";
 		$time = microtime(true);
 		$this->db->createCommand()->alterColumn($table, $column, $type)->execute();
+		echo " done (time: " . sprintf('%.3f', microtime(true) - $time) . "s)\n";
+	}
+
+	/**
+	 * Builds and executes a SQL statement for creating a primary key.
+	 * The method will properly quote the table and column names.
+	 * @param string $name the name of the primary key constraint.
+	 * @param string $table the table that the primary key constraint will be added to.
+	 * @param string|array $columns comma separated string or array of columns that the primary key will consist of.
+	 */
+	public function addPrimaryKey($name, $table, $columns)
+	{
+		echo "    > add primary key $name on $table (".(is_array($columns) ? implode(',', $columns) : $columns).") ...";
+		$time = microtime(true);
+		$this->db->createCommand()->addPrimaryKey($name, $table, $columns)->execute();
+		echo " done (time: " . sprintf('%.3f', microtime(true) - $time) . "s)\n";
+	}
+
+	/**
+	 * Builds and executes a SQL statement for dropping a primary key.
+	 * @param string $name the name of the primary key constraint to be removed.
+	 * @param string $table the table that the primary key constraint will be removed from.
+	 * @return Command the command object itself
+	 */
+	public function dropPrimaryKey($name, $table)
+	{
+		echo "    > drop primary key $name ...";
+		$time = microtime(true);
+		$this->db->createCommand()->dropPrimaryKey($name, $table)->execute();
 		echo " done (time: " . sprintf('%.3f', microtime(true) - $time) . "s)\n";
 	}
 

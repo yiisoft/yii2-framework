@@ -9,6 +9,7 @@ namespace yii\validators;
 
 use Yii;
 use yii\base\InvalidConfigException;
+use yii\db\ActiveRecord;
 
 /**
  * CUniqueValidator validates that the attribute value is unique in the corresponding database table.
@@ -39,7 +40,7 @@ class UniqueValidator extends Validator
 	{
 		parent::init();
 		if ($this->message === null) {
-			$this->message = Yii::t('yii|{attribute} "{value}" has already been taken.');
+			$this->message = Yii::t('yii', '{attribute} "{value}" has already been taken.');
 		}
 	}
 
@@ -55,12 +56,12 @@ class UniqueValidator extends Validator
 		$value = $object->$attribute;
 
 		if (is_array($value)) {
-			$this->addError($object, $attribute, Yii::t('yii|{attribute} is invalid.'));
+			$this->addError($object, $attribute, Yii::t('yii', '{attribute} is invalid.'));
 			return;
 		}
 
 		/** @var $className \yii\db\ActiveRecord */
-		$className = $this->className === null ? get_class($object) : Yii::import($this->className);
+		$className = $this->className === null ? get_class($object) : $this->className;
 		$attributeName = $this->attributeName === null ? $attribute : $this->attributeName;
 
 		$table = $className::getTableSchema();
@@ -71,7 +72,7 @@ class UniqueValidator extends Validator
 		$query = $className::find();
 		$query->where(array($column->name => $value));
 
-		if ($object->getIsNewRecord()) {
+		if (!$object instanceof ActiveRecord || $object->getIsNewRecord()) {
 			// if current $object isn't in the database yet then it's OK just to call exists()
 			$exists = $query->exists();
 		} else {

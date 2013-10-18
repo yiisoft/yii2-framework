@@ -8,48 +8,110 @@
 namespace yii\web;
 
 use Yii;
-use yii\base\HttpException;
 use yii\base\InvalidConfigException;
+use yii\helpers\Security;
 
 /**
+ * The web Request class represents an HTTP request
+ *
+ * It encapsulates the $_SERVER variable and resolves its inconsistency among different Web servers.
+ * Also it provides an interface to retrieve request parameters from $_POST, $_GET, $_COOKIES and REST
+ * parameters sent via other HTTP methods like PUT or DELETE.
+ *
+ * @property string $absoluteUrl The currently requested absolute URL. This property is read-only.
+ * @property string $acceptTypes User browser accept types, null if not present. This property is read-only.
+ * @property array $acceptedContentTypes The content types ordered by the preference level. The first element
+ * represents the most preferred content type.
+ * @property array $acceptedLanguages The languages ordered by the preference level. The first element
+ * represents the most preferred language.
+ * @property string $baseUrl The relative URL for the application.
+ * @property string $cookieValidationKey The secret key used for cookie validation. If it was not set
+ * previously, a random key will be generated and used.
+ * @property CookieCollection $cookies The cookie collection. This property is read-only.
+ * @property string $csrfToken The random token for CSRF validation. This property is read-only.
+ * @property string $csrfTokenFromHeader The CSRF token sent via [[CSRF_HEADER]] by browser. Null is returned
+ * if no such header is sent. This property is read-only.
+ * @property string $hostInfo Schema and hostname part (with port number if needed) of the request URL (e.g.
+ * `http://www.yiiframework.com`).
+ * @property boolean $isAjax Whether this is an AJAX (XMLHttpRequest) request. This property is read-only.
+ * @property boolean $isDelete Whether this is a DELETE request. This property is read-only.
+ * @property boolean $isFlash Whether this is an Adobe Flash or Adobe Flex request. This property is
+ * read-only.
+ * @property boolean $isGet Whether this is a GET request. This property is read-only.
+ * @property boolean $isHead Whether this is a HEAD request. This property is read-only.
+ * @property boolean $isOptions Whether this is a OPTIONS request. This property is read-only.
+ * @property boolean $isPatch Whether this is a PATCH request. This property is read-only.
+ * @property boolean $isPost Whether this is a POST request. This property is read-only.
+ * @property boolean $isPut Whether this is a PUT request. This property is read-only.
+ * @property boolean $isSecureConnection If the request is sent via secure channel (https). This property is
+ * read-only.
+ * @property string $method Request method, such as GET, POST, HEAD, PUT, PATCH, DELETE. The value returned is
+ * turned into upper case. This property is read-only.
+ * @property string $pathInfo Part of the request URL that is after the entry script and before the question
+ * mark. Note, the returned path info is already URL-decoded.
+ * @property integer $port Port number for insecure requests.
+ * @property string $preferredLanguage The language that the application should use. Null is returned if both
+ * [[getAcceptedLanguages()]] and `$languages` are empty. This property is read-only.
+ * @property string $queryString Part of the request URL that is after the question mark. This property is
+ * read-only.
+ * @property string $rawBody The request body. This property is read-only.
+ * @property string $referrer URL referrer, null if not present. This property is read-only.
+ * @property array $restParams The RESTful request parameters.
+ * @property string $scriptFile The entry script file path.
+ * @property string $scriptUrl The relative URL of the entry script.
+ * @property integer $securePort Port number for secure requests.
+ * @property string $serverName Server name. This property is read-only.
+ * @property integer $serverPort Server port number. This property is read-only.
+ * @property string $url The currently requested relative URL. Note that the URI returned is URL-encoded.
+ * @property string $userAgent User agent, null if not present. This property is read-only.
+ * @property string $userHost User host name, null if cannot be determined. This property is read-only.
+ * @property string $userIP User IP address. This property is read-only.
+ *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
 class Request extends \yii\base\Request
 {
 	/**
-	 * @var boolean whether to enable CSRF (Cross-Site Request Forgery) validation. Defaults to false.
-	 * By setting this property to true, forms submitted to an Yii Web application must be originated
+	 * The name of the HTTP header for sending CSRF token.
+	 */
+	const CSRF_HEADER = 'X-CSRF-Token';
+
+
+	/**
+	 * @var boolean whether to enable CSRF (Cross-Site Request Forgery) validation. Defaults to true.
+	 * When CSRF validation is enabled, forms submitted to an Yii Web application must be originated
 	 * from the same application. If not, a 400 HTTP exception will be raised.
 	 *
 	 * Note, this feature requires that the user client accepts cookie. Also, to use this feature,
-	 * forms submitted via POST method must contain a hidden input whose name is specified by [[csrfTokenName]].
+	 * forms submitted via POST method must contain a hidden input whose name is specified by [[csrfVar]].
 	 * You may use [[\yii\web\Html::beginForm()]] to generate his hidden input.
+	 *
+	 * In JavaScript, you may get the values of [[csrfVar]] and [[csrfToken]] via `yii.getCsrfVar()` and
+	 * `yii.getCsrfToken()`, respectively. The [[\yii\web\YiiAsset]] asset must be registered.
+	 *
+	 * @see Controller::enableCsrfValidation
 	 * @see http://en.wikipedia.org/wiki/Cross-site_request_forgery
 	 */
-	public $enableCsrfValidation = false;
+	public $enableCsrfValidation = true;
 	/**
-	 * @var string the name of the token used to prevent CSRF. Defaults to 'YII_CSRF_TOKEN'.
-	 * This property is effectively only when {@link enableCsrfValidation} is true.
+	 * @var string the name of the token used to prevent CSRF. Defaults to '_csrf'.
+	 * This property is used only when [[enableCsrfValidation]] is true.
 	 */
-	public $csrfTokenName = '_csrf';
+	public $csrfVar = '_csrf';
 	/**
 	 * @var array the configuration of the CSRF cookie. This property is used only when [[enableCsrfValidation]] is true.
 	 * @see Cookie
 	 */
-	public $csrfCookie = array('httponly' => true);
+	public $csrfCookie = array('httpOnly' => true);
 	/**
 	 * @var boolean whether cookies should be validated to ensure they are not tampered. Defaults to true.
 	 */
 	public $enableCookieValidation = true;
 	/**
-	 * @var string the secret key used for cookie validation. If not set, a random key will be generated and used.
-	 */
-	public $cookieValidationKey;
-	/**
-	 * @var string|boolean the name of the POST parameter that is used to indicate if a request is a PUT or DELETE
+	 * @var string|boolean the name of the POST parameter that is used to indicate if a request is a PUT, PATCH or DELETE
 	 * request tunneled through POST. Default to '_method'.
-	 * @see getRequestMethod
+	 * @see getMethod
 	 * @see getRestParams
 	 */
 	public $restVar = '_method';
@@ -64,24 +126,22 @@ class Request extends \yii\base\Request
 	 */
 	public function resolve()
 	{
-		$this->validateCsrfToken();
-
 		$result = Yii::$app->getUrlManager()->parseRequest($this);
 		if ($result !== false) {
 			list ($route, $params) = $result;
 			$_GET = array_merge($_GET, $params);
 			return array($route, $_GET);
 		} else {
-			throw new HttpException(404, Yii::t('yii|Page not found.'));
+			throw new HttpException(404, Yii::t('yii', 'Page not found.'));
 		}
 	}
 
 	/**
-	 * Returns the method of the current request (e.g. GET, POST, HEAD, PUT, DELETE).
-	 * @return string request method, such as GET, POST, HEAD, PUT, DELETE.
+	 * Returns the method of the current request (e.g. GET, POST, HEAD, PUT, PATCH, DELETE).
+	 * @return string request method, such as GET, POST, HEAD, PUT, PATCH, DELETE.
 	 * The value returned is turned into upper case.
 	 */
-	public function getRequestMethod()
+	public function getMethod()
 	{
 		if (isset($_POST[$this->restVar])) {
 			return strtoupper($_POST[$this->restVar]);
@@ -91,37 +151,73 @@ class Request extends \yii\base\Request
 	}
 
 	/**
+	 * Returns whether this is a GET request.
+	 * @return boolean whether this is a GET request.
+	 */
+	public function getIsGet()
+	{
+		return $this->getMethod() === 'GET';
+	}
+
+	/**
+	 * Returns whether this is an OPTIONS request.
+	 * @return boolean whether this is a OPTIONS request.
+	 */
+	public function getIsOptions()
+	{
+		return $this->getMethod() === 'OPTIONS';
+	}
+  
+	/**
+	 * Returns whether this is a HEAD request.
+	 * @return boolean whether this is a HEAD request.
+	 */
+	public function getIsHead()
+	{
+		return $this->getMethod() === 'HEAD';
+	}
+  
+	/**
 	 * Returns whether this is a POST request.
 	 * @return boolean whether this is a POST request.
 	 */
-	public function getIsPostRequest()
+	public function getIsPost()
 	{
-		return $this->getRequestMethod() === 'POST';
+		return $this->getMethod() === 'POST';
 	}
 
 	/**
 	 * Returns whether this is a DELETE request.
 	 * @return boolean whether this is a DELETE request.
 	 */
-	public function getIsDeleteRequest()
+	public function getIsDelete()
 	{
-		return $this->getRequestMethod() === 'DELETE';
+		return $this->getMethod() === 'DELETE';
 	}
 
 	/**
 	 * Returns whether this is a PUT request.
 	 * @return boolean whether this is a PUT request.
 	 */
-	public function getIsPutRequest()
+	public function getIsPut()
 	{
-		return $this->getRequestMethod() === 'PUT';
+		return $this->getMethod() === 'PUT';
+	}
+
+	/**
+	 * Returns whether this is a PATCH request.
+	 * @return boolean whether this is a PATCH request.
+	 */
+	public function getIsPatch()
+	{
+		return $this->getMethod() === 'PATCH';
 	}
 
 	/**
 	 * Returns whether this is an AJAX (XMLHttpRequest) request.
 	 * @return boolean whether this is an AJAX (XMLHttpRequest) request.
 	 */
-	public function getIsAjaxRequest()
+	public function getIsAjax()
 	{
 		return isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest';
 	}
@@ -130,7 +226,7 @@ class Request extends \yii\base\Request
 	 * Returns whether this is an Adobe Flash or Flex request.
 	 * @return boolean whether this is an Adobe Flash or Adobe Flex request.
 	 */
-	public function getIsFlashRequest()
+	public function getIsFlash()
 	{
 		return isset($_SERVER['HTTP_USER_AGENT']) &&
 			(stripos($_SERVER['HTTP_USER_AGENT'], 'Shockwave') !== false || stripos($_SERVER['HTTP_USER_AGENT'], 'Flash') !== false);
@@ -141,7 +237,7 @@ class Request extends \yii\base\Request
 	/**
 	 * Returns the request parameters for the RESTful request.
 	 * @return array the RESTful request parameters
-	 * @see getRequestMethod
+	 * @see getMethod
 	 */
 	public function getRestParams()
 	{
@@ -203,7 +299,7 @@ class Request extends \yii\base\Request
 	 * @return mixed the GET parameter value
 	 * @see getPost
 	 */
-	public function getParam($name, $defaultValue = null)
+	public function get($name, $defaultValue = null)
 	{
 		return isset($_GET[$name]) ? $_GET[$name] : $defaultValue;
 	}
@@ -229,7 +325,7 @@ class Request extends \yii\base\Request
 	 */
 	public function getDelete($name, $defaultValue = null)
 	{
-		return $this->getIsDeleteRequest() ? $this->getRestParam($name, $defaultValue) : null;
+		return $this->getIsDelete() ? $this->getRestParam($name, $defaultValue) : null;
 	}
 
 	/**
@@ -240,7 +336,18 @@ class Request extends \yii\base\Request
 	 */
 	public function getPut($name, $defaultValue = null)
 	{
-		return $this->getIsPutRequest() ? $this->getRestParam($name, $defaultValue) : null;
+		return $this->getIsPut() ? $this->getRestParam($name, $defaultValue) : null;
+	}
+
+	/**
+	 * Returns the named PATCH parameter value.
+	 * @param string $name the PATCH parameter name
+	 * @param mixed $defaultValue the default parameter value if the PATCH parameter does not exist.
+	 * @return mixed the PATCH parameter value
+	 */
+	public function getPatch($name, $defaultValue = null)
+	{
+		return $this->getIsPatch() ? $this->getRestParam($name, $defaultValue) : null;
 	}
 
 	private $_hostInfo;
@@ -401,13 +508,13 @@ class Request extends \yii\base\Request
 	 */
 	public function setPathInfo($value)
 	{
-		$this->_pathInfo = trim($value, '/');
+		$this->_pathInfo = ltrim($value, '/');
 	}
 
 	/**
 	 * Resolves the path info part of the currently requested URL.
 	 * A path info refers to the part that is after the entry script and before the question mark (query string).
-	 * The starting and ending slashes are both removed.
+	 * The starting slashes are both removed (ending slashes will be kept).
 	 * @return string part of the request URL that is after the entry script and before the question mark.
 	 * Note, the returned path info is decoded.
 	 * @throws InvalidConfigException if the path info cannot be determined due to unexpected server configuration
@@ -449,7 +556,7 @@ class Request extends \yii\base\Request
 			throw new InvalidConfigException('Unable to determine the path info of the current request.');
 		}
 
-		return trim($pathInfo, '/');
+		return ltrim($pathInfo, '/');
 	}
 
 	/**
@@ -533,7 +640,8 @@ class Request extends \yii\base\Request
 	 */
 	public function getIsSecureConnection()
 	{
-		return !empty($_SERVER['HTTPS']) && strcasecmp($_SERVER['HTTPS'], 'off');
+		return isset($_SERVER['HTTPS']) && ($_SERVER['HTTPS'] === 'on' || $_SERVER['HTTPS'] == 1)
+			|| isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https';
 	}
 
 	/**
@@ -661,40 +769,133 @@ class Request extends \yii\base\Request
 		}
 	}
 
-	private $_preferredLanguages;
+	private $_contentTypes;
 
 	/**
-	 * Returns the user preferred languages.
-	 * The languages returned are ordered by user's preference, starting with the language that the user
-	 * prefers the most.
-	 * @return string the user preferred languages. An empty array may be returned if the user has no preference.
+	 * Returns the content types accepted by the end user.
+	 * This is determined by the `Accept` HTTP header.
+	 * @return array the content types ordered by the preference level. The first element
+	 * represents the most preferred content type.
 	 */
-	public function getPreferredLanguages()
+	public function getAcceptedContentTypes()
 	{
-		if ($this->_preferredLanguages === null) {
-			if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) && ($n = preg_match_all('/([\w\-_]+)\s*(;\s*q\s*=\s*(\d*\.\d*))?/', $_SERVER['HTTP_ACCEPT_LANGUAGE'], $matches)) > 0) {
-				$languages = array();
-				for ($i = 0; $i < $n; ++$i) {
-					$languages[$matches[1][$i]] = empty($matches[3][$i]) ? 1.0 : floatval($matches[3][$i]);
-				}
-				arsort($languages);
-				$this->_preferredLanguages = array_keys($languages);
+		if ($this->_contentTypes === null) {
+			if (isset($_SERVER['HTTP_ACCEPT'])) {
+				$this->_contentTypes = $this->parseAcceptHeader($_SERVER['HTTP_ACCEPT']);
 			} else {
-				$this->_preferredLanguages = array();
+				$this->_contentTypes = array();
 			}
 		}
-		return $this->_preferredLanguages;
+		return $this->_contentTypes;
 	}
 
 	/**
-	 * Returns the language most preferred by the user.
-	 * @return string|boolean the language most preferred by the user. If the user has no preference, false
-	 * will be returned.
+	 * @param array $value the content types that are accepted by the end user. They should
+	 * be ordered by the preference level.
 	 */
-	public function getPreferredLanguage()
+	public function setAcceptedContentTypes($value)
 	{
-		$languages = $this->getPreferredLanguages();
-		return isset($languages[0]) ? $languages[0] : false;
+		$this->_contentTypes = $value;
+	}
+
+	private $_languages;
+
+	/**
+	 * Returns the languages accepted by the end user.
+	 * This is determined by the `Accept-Language` HTTP header.
+	 * @return array the languages ordered by the preference level. The first element
+	 * represents the most preferred language.
+	 */
+	public function getAcceptedLanguages()
+	{
+		if ($this->_languages === null) {
+			if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) {
+				$this->_languages = $this->parseAcceptHeader($_SERVER['HTTP_ACCEPT_LANGUAGE']);
+			} else {
+				$this->_languages = array();
+			}
+		}
+		return $this->_languages;
+	}
+
+	/**
+	 * @param array $value the languages that are accepted by the end user. They should
+	 * be ordered by the preference level.
+	 */
+	public function setAcceptedLanguages($value)
+	{
+		$this->_languages = $value;
+	}
+
+	/**
+	 * Parses the given `Accept` (or `Accept-Language`) header.
+	 * This method will return the accepted values ordered by their preference level.
+	 * @param string $header the header to be parsed
+	 * @return array the accept values ordered by their preference level.
+	 */
+	protected function parseAcceptHeader($header)
+	{
+		$accepts = array();
+		$n = preg_match_all('/\s*([\w\/\-\*]+)\s*(?:;\s*q\s*=\s*([\d\.]+))?[^,]*/', $header, $matches, PREG_SET_ORDER);
+		for ($i = 0; $i < $n; ++$i) {
+			if (!empty($matches[$i][1])) {
+				$accepts[] = array($matches[$i][1], isset($matches[$i][2]) ? (float)$matches[$i][2] : 1, $i);
+			}
+		}
+		usort($accepts, function ($a, $b) {
+			if ($a[1] > $b[1]) {
+				return -1;
+			} elseif ($a[1] < $b[1]) {
+				return 1;
+			} elseif ($a[0] === $b[0]) {
+				return $a[2] > $b[2] ? 1 : -1;
+			} elseif ($a[0] === '*/*') {
+				return 1;
+			} elseif ($b[0] === '*/*') {
+				return -1;
+			} else {
+				$wa = $a[0][strlen($a[0]) - 1] === '*';
+				$wb = $b[0][strlen($b[0]) - 1] === '*';
+				if ($wa xor $wb) {
+					return $wa ? 1 : -1;
+				} else {
+					return $a[2] > $b[2] ? 1 : -1;
+				}
+			}
+		});
+		$result = array();
+		foreach ($accepts as $accept) {
+			$result[] = $accept[0];
+		}
+		return array_unique($result);
+	}
+
+	/**
+	 * Returns the user-preferred language that should be used by this application.
+	 * The language resolution is based on the user preferred languages and the languages
+	 * supported by the application. The method will try to find the best match.
+	 * @param array $languages a list of the languages supported by the application.
+	 * If empty, this method will return the first language returned by [[getAcceptedLanguages()]].
+	 * @return string the language that the application should use. Null is returned if both [[getAcceptedLanguages()]]
+	 * and `$languages` are empty.
+	 */
+	public function getPreferredLanguage($languages = array())
+	{
+		$acceptedLanguages = $this->getAcceptedLanguages();
+		if (empty($languages)) {
+			return isset($acceptedLanguages[0]) ? $acceptedLanguages[0] : null;
+		}
+		foreach ($acceptedLanguages as $acceptedLanguage) {
+			$acceptedLanguage = str_replace('-', '_', strtolower($acceptedLanguage));
+			foreach ($languages as $language) {
+				$language = str_replace('-', '_', strtolower($language));
+				// en_us==en_us, en==en_us, en_us==en
+				if ($language === $acceptedLanguage || strpos($acceptedLanguage, $language . '_') === 0 || strpos($language, $acceptedLanguage . '_') === 0) {
+					return $language;
+				}
+			}
+		}
+		return reset($languages);
 	}
 
 	/**
@@ -716,15 +917,68 @@ class Request extends \yii\base\Request
 	public function getCookies()
 	{
 		if ($this->_cookies === null) {
-			$this->_cookies = new CookieCollection(array(
-				'enableValidation' => $this->enableCookieValidation,
-				'validationKey' => $this->cookieValidationKey,
+			$this->_cookies = new CookieCollection($this->loadCookies(), array(
+				'readOnly' => true,
 			));
 		}
 		return $this->_cookies;
 	}
 
-	private $_csrfToken;
+	/**
+	 * Converts `$_COOKIE` into an array of [[Cookie]].
+	 * @return array the cookies obtained from request
+	 */
+	protected function loadCookies()
+	{
+		$cookies = array();
+		if ($this->enableCookieValidation) {
+			$key = $this->getCookieValidationKey();
+			foreach ($_COOKIE as $name => $value) {
+				if (is_string($value) && ($value = Security::validateData($value, $key)) !== false) {
+					$cookies[$name] = new Cookie(array(
+						'name' => $name,
+						'value' => @unserialize($value),
+					));
+				}
+			}
+		} else {
+			foreach ($_COOKIE as $name => $value) {
+				$cookies[$name] = new Cookie(array(
+					'name' => $name,
+					'value' => $value,
+				));
+			}
+		}
+		return $cookies;
+	}
+
+	private $_cookieValidationKey;
+
+	/**
+	 * @return string the secret key used for cookie validation. If it was not set previously,
+	 * a random key will be generated and used.
+	 */
+	public function getCookieValidationKey()
+	{
+		if ($this->_cookieValidationKey === null) {
+			$this->_cookieValidationKey = Security::getSecretKey(__CLASS__ . '/' . Yii::$app->id);
+		}
+		return $this->_cookieValidationKey;
+	}
+
+	/**
+	 * Sets the secret key used for cookie validation.
+	 * @param string $value the secret key used for cookie validation.
+	 */
+	public function setCookieValidationKey($value)
+	{
+		$this->_cookieValidationKey = $value;
+	}
+
+	/**
+	 * @var Cookie
+	 */
+	private $_csrfCookie;
 
 	/**
 	 * Returns the random token used to perform CSRF validation.
@@ -734,16 +988,24 @@ class Request extends \yii\base\Request
 	 */
 	public function getCsrfToken()
 	{
-		if ($this->_csrfToken === null) {
-			$cookies = $this->getCookies();
-			if (($this->_csrfToken = $cookies->getValue($this->csrfTokenName)) === null) {
-				$cookie = $this->createCsrfCookie();
-				$this->_csrfToken = $cookie->value;
-				$cookies->add($cookie);
+		if ($this->_csrfCookie === null) {
+			$this->_csrfCookie = $this->getCookies()->get($this->csrfVar);
+			if ($this->_csrfCookie === null) {
+				$this->_csrfCookie = $this->createCsrfCookie();
+				Yii::$app->getResponse()->getCookies()->add($this->_csrfCookie);
 			}
 		}
 
-		return $this->_csrfToken;
+		return $this->_csrfCookie->value;
+	}
+
+	/**
+	 * @return string the CSRF token sent via [[CSRF_HEADER]] by browser. Null is returned if no such header is sent.
+	 */
+	public function getCsrfTokenFromHeader()
+	{
+		$key = 'HTTP_' . str_replace('-', '_', strtoupper(self::CSRF_HEADER));
+		return isset($_SERVER[$key]) ? $_SERVER[$key] : null;
 	}
 
 	/**
@@ -755,7 +1017,7 @@ class Request extends \yii\base\Request
 	protected function createCsrfCookie()
 	{
 		$options = $this->csrfCookie;
-		$options['name'] = $this->csrfTokenName;
+		$options['name'] = $this->csrfVar;
 		$options['value'] = sha1(uniqid(mt_rand(), true));
 		return new Cookie($options);
 	}
@@ -764,31 +1026,30 @@ class Request extends \yii\base\Request
 	 * Performs the CSRF validation.
 	 * The method will compare the CSRF token obtained from a cookie and from a POST field.
 	 * If they are different, a CSRF attack is detected and a 400 HTTP exception will be raised.
-	 * @throws HttpException if the validation fails
+	 * This method is called in [[Controller::beforeAction()]].
+	 * @return boolean whether CSRF token is valid. If [[enableCsrfValidation]] is false, this method will return true.
 	 */
 	public function validateCsrfToken()
 	{
-		if (!$this->enableCsrfValidation) {
-			return;
+		$method = $this->getMethod();
+		if (!$this->enableCsrfValidation || !in_array($method, array('POST', 'PUT', 'PATCH', 'DELETE'), true)) {
+			return true;
 		}
-		$method = $this->getRequestMethod();
-		if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE') {
-			$cookies = $this->getCookies();
-			switch ($method) {
-				case 'POST':
-					$token = $this->getPost($this->csrfTokenName);
-					break;
-				case 'PUT':
-					$token = $this->getPut($this->csrfTokenName);
-					break;
-				case 'DELETE':
-					$token = $this->getDelete($this->csrfTokenName);
-			}
-
-			if (empty($token) || $cookies->getValue($this->csrfTokenName) !== $token) {
-				throw new HttpException(400, Yii::t('yii|Unable to verify your data submission.'));
-			}
+		$trueToken = $this->getCookies()->getValue($this->csrfVar);
+		switch ($method) {
+			case 'PUT':
+				$token = $this->getPut($this->csrfVar);
+				break;
+			case 'PATCH':
+				$token = $this->getPatch($this->csrfVar);
+				break;
+			case 'DELETE':
+				$token = $this->getDelete($this->csrfVar);
+				break;
+			default:
+				$token = $this->getPost($this->csrfVar);
+				break;
 		}
+		return $token === $trueToken || $this->getCsrfTokenFromHeader() === $trueToken;
 	}
 }
-

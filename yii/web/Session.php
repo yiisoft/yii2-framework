@@ -45,6 +45,28 @@ use yii\base\InvalidParamException;
  * useful for displaying confirmation messages. To use flash messages, simply
  * call methods such as [[setFlash()]], [[getFlash()]].
  *
+ * @property array $allFlashes Flash messages (key => message). This property is read-only.
+ * @property array $cookieParams The session cookie parameters.
+ * @property integer $count The number of session variables. This property is read-only.
+ * @property string $flash The key identifying the flash message. Note that flash messages and normal session
+ * variables share the same name space. If you have a normal session variable using the same name, its value will
+ * be overwritten by this method. This property is write-only.
+ * @property float $gCProbability The probability (percentage) that the GC (garbage collection) process is
+ * started on every session initialization, defaults to 1 meaning 1% chance.
+ * @property string $id The current session ID.
+ * @property boolean $isActive Whether the session has started. This property is read-only.
+ * @property SessionIterator $iterator An iterator for traversing the session variables. This property is
+ * read-only.
+ * @property string $name The current session name.
+ * @property string $savePath The current session save path, defaults to '/tmp'.
+ * @property integer $timeout The number of seconds after which data will be seen as 'garbage' and cleaned up.
+ * The default value is 1440 seconds (or the value of "session.gc_maxlifetime" set in php.ini).
+ * @property boolean|null $useCookies The value indicating whether cookies should be used to store session
+ * IDs.
+ * @property boolean $useCustomStorage Whether to use custom storage. This property is read-only.
+ * @property boolean $useTransparentSessionID Whether transparent sid support is enabled or not, defaults to
+ * false.
+ *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
@@ -63,7 +85,7 @@ class Session extends Component implements \IteratorAggregate, \ArrayAccess, \Co
 	 * @var array parameter-value pairs to override default session cookie parameters
 	 */
 	public $cookieParams = array(
-		'httponly' => true
+		'httpOnly' => true
 	);
 
 	/**
@@ -241,26 +263,31 @@ class Session extends Component implements \IteratorAggregate, \ArrayAccess, \Co
 	 */
 	public function getCookieParams()
 	{
-		return session_get_cookie_params();
+		$params = session_get_cookie_params();
+		if (isset($params['httponly'])) {
+			$params['httpOnly'] = $params['httponly'];
+			unset($params['httponly']);
+		}
+		return $params;
 	}
 
 	/**
 	 * Sets the session cookie parameters.
 	 * The effect of this method only lasts for the duration of the script.
 	 * Call this method before the session starts.
-	 * @param array $value cookie parameters, valid keys include: lifetime, path, domain, secure and httponly.
+	 * @param array $value cookie parameters, valid keys include: `lifetime`, `path`, `domain`, `secure` and `httpOnly`.
 	 * @throws InvalidParamException if the parameters are incomplete.
 	 * @see http://us2.php.net/manual/en/function.session-set-cookie-params.php
 	 */
 	public function setCookieParams($value)
 	{
-		$data = session_get_cookie_params();
+		$data = $this->getCookieParams();
 		extract($data);
 		extract($value);
-		if (isset($lifetime, $path, $domain, $secure, $httponly)) {
-			session_set_cookie_params($lifetime, $path, $domain, $secure, $httponly);
+		if (isset($lifetime, $path, $domain, $secure, $httpOnly)) {
+			session_set_cookie_params($lifetime, $path, $domain, $secure, $httpOnly);
 		} else {
-			throw new InvalidParamException('Please make sure these parameters are provided: lifetime, path, domain, secure and httponly.');
+			throw new InvalidParamException('Please make sure these parameters are provided: lifetime, path, domain, secure and httpOnly.');
 		}
 	}
 
@@ -555,12 +582,22 @@ class Session extends Component implements \IteratorAggregate, \ArrayAccess, \Co
 	 * A flash message is available only in the current request and the next request.
 	 * @param string $key the key identifying the flash message
 	 * @param mixed $defaultValue value to be returned if the flash message does not exist.
+	 * @param boolean $delete whether to delete this flash message right after this method is called.
+	 * If false, the flash message will be automatically deleted after the next request.
 	 * @return mixed the flash message
 	 */
-	public function getFlash($key, $defaultValue = null)
+	public function getFlash($key, $defaultValue = null, $delete = false)
 	{
 		$counters = $this->get($this->flashVar, array());
-		return isset($counters[$key]) ? $this->get($key, $defaultValue) : $defaultValue;
+		if (isset($counters[$key])) {
+			$value = $this->get($key, $defaultValue);
+			if ($delete) {
+				$this->removeFlash($key);
+			}
+			return $value;
+		} else {
+			return $defaultValue;
+		}
 	}
 
 	/**

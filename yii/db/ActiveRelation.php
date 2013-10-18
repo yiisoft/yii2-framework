@@ -8,8 +8,6 @@
 
 namespace yii\db;
 
-use yii\db\Connection;
-use yii\db\Command;
 use yii\base\InvalidConfigException;
 
 /**
@@ -53,11 +51,22 @@ class ActiveRelation extends ActiveQuery
 	public $via;
 
 	/**
+	 * Clones internal objects.
+	 */
+	public function __clone()
+	{
+		if (is_object($this->via)) {
+			// make a clone of "via" object so that the same query object can be reused multiple times
+			$this->via = clone $this->via;
+		}
+	}
+
+	/**
 	 * Specifies the relation associated with the pivot table.
 	 * @param string $relationName the relation name. This refers to a relation declared in [[primaryModel]].
 	 * @param callable $callable a PHP callback for customizing the relation associated with the pivot table.
 	 * Its signature should be `function($query)`, where `$query` is the query to be customized.
-	 * @return ActiveRelation the relation object itself.
+	 * @return static the relation object itself.
 	 */
 	public function via($relationName, $callable = null)
 	{
@@ -77,7 +86,7 @@ class ActiveRelation extends ActiveQuery
 	 * in the [[primaryModel]] table.
 	 * @param callable $callable a PHP callback for customizing the relation associated with the pivot table.
 	 * Its signature should be `function($query)`, where `$query` is the query to be customized.
-	 * @return ActiveRelation
+	 * @return static
 	 */
 	public function viaTable($tableName, $link, $callable = null)
 	{
@@ -270,7 +279,9 @@ class ActiveRelation extends ActiveQuery
 			// single key
 			$attribute = reset($this->link);
 			foreach ($models as $model) {
-				$values[] = $model[$attribute];
+				if (($value = $model[$attribute]) !== null) {
+					$values[] = $value;
+				}
 			}
 		} else {
 			// composite keys
@@ -298,7 +309,7 @@ class ActiveRelation extends ActiveQuery
 		/** @var $primaryModel ActiveRecord */
 		$primaryModel = reset($primaryModels);
 		$db = $primaryModel->getDb();
-		$sql = $db->getQueryBuilder()->build($this);
-		return $db->createCommand($sql, $this->params)->queryAll();
+		list ($sql, $params) = $db->getQueryBuilder()->build($this);
+		return $db->createCommand($sql, $params)->queryAll();
 	}
 }

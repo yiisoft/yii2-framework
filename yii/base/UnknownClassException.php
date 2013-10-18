@@ -8,7 +8,7 @@
 namespace yii\base;
 
 /**
- * UnknownClassException represents an exception caused by accessing an unknown class.
+ * UnknownClassException represents an exception caused by using an unknown class.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
@@ -20,7 +20,6 @@ class UnknownClassException extends Exception
 	 */
 	public function getName()
 	{
-		return \Yii::t('yii|Unknown Class');
+		return \Yii::t('yii', 'Unknown Class');
 	}
 }
-

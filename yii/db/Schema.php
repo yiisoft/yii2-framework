@@ -8,28 +8,34 @@
 namespace yii\db;
 
 use Yii;
+use yii\base\Object;
 use yii\base\NotSupportedException;
 use yii\base\InvalidCallException;
 use yii\caching\Cache;
+use yii\caching\GroupDependency;
 
 /**
  * Schema is the base class for concrete DBMS-specific schema classes.
  *
  * Schema represents the database schema information that is DBMS specific.
  *
- * @property QueryBuilder $queryBuilder the query builder for the DBMS represented by this schema
- * @property array $tableNames the names of all tables in this database.
- * @property array $tableSchemas the schema information for all tables in this database.
+ * @property string $lastInsertID The row ID of the last row inserted, or the last value retrieved from the
+ * sequence object. This property is read-only.
+ * @property QueryBuilder $queryBuilder The query builder for this connection. This property is read-only.
+ * @property string[] $tableNames All table names in the database. This property is read-only.
+ * @property TableSchema[] $tableSchemas The metadata for all tables in the database. Each array element is an
+ * instance of [[TableSchema]] or its child class. This property is read-only.
  *
  * @author Qiang Xue <qiang.xue@gmail.com>
  * @since 2.0
  */
-abstract class Schema extends \yii\base\Object
+abstract class Schema extends Object
 {
 	/**
 	 * The followings are the supported abstract column data types.
 	 */
 	const TYPE_PK = 'pk';
+	const TYPE_BIGPK = 'bigpk';
 	const TYPE_STRING = 'string';
 	const TYPE_TEXT = 'text';
 	const TYPE_SMALLINT = 'smallint';
@@ -89,11 +95,11 @@ abstract class Schema extends \yii\base\Object
 			/** @var $cache Cache */
 			$cache = is_string($db->schemaCache) ? Yii::$app->getComponent($db->schemaCache) : $db->schemaCache;
 			if ($cache instanceof Cache) {
-				$key = $this->getCacheKey($cache, $name);
+				$key = $this->getCacheKey($name);
 				if ($refresh || ($table = $cache->get($key)) === false) {
 					$table = $this->loadTableSchema($realName);
 					if ($table !== null) {
-						$cache->set($key, $table, $db->schemaCacheDuration);
+						$cache->set($key, $table, $db->schemaCacheDuration, new GroupDependency($this->getCacheGroup()));
 					}
 				}
 				return $this->_tables[$name] = $table;
@@ -104,18 +110,31 @@ abstract class Schema extends \yii\base\Object
 
 	/**
 	 * Returns the cache key for the specified table name.
-	 * @param Cache $cache the cache component
 	 * @param string $name the table name
-	 * @return string the cache key
+	 * @return mixed the cache key
 	 */
-	public function getCacheKey($cache, $name)
+	protected function getCacheKey($name)
 	{
-		return $cache->buildKey(array(
+		return array(
 			__CLASS__,
 			$this->db->dsn,
 			$this->db->username,
 			$name,
-		));
+		);
+	}
+
+	/**
+	 * Returns the cache group name.
+	 * This allows [[refresh()]] to invalidate all cached table schemas.
+	 * @return string the cache group name
+	 */
+	protected function getCacheGroup()
+	{
+		return md5(serialize(array(
+			__CLASS__,
+			$this->db->dsn,
+			$this->db->username,
+		)));
 	}
 
 	/**
@@ -123,7 +142,7 @@ abstract class Schema extends \yii\base\Object
 	 * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema name.
 	 * @param boolean $refresh whether to fetch the latest available table schemas. If this is false,
 	 * cached data may be returned if available.
-	 * @return array the metadata for all tables in the database.
+	 * @return TableSchema[] the metadata for all tables in the database.
 	 * Each array element is an instance of [[TableSchema]] or its child class.
 	 */
 	public function getTableSchemas($schema = '', $refresh = false)
@@ -146,7 +165,7 @@ abstract class Schema extends \yii\base\Object
 	 * If not empty, the returned table names will be prefixed with the schema name.
 	 * @param boolean $refresh whether to fetch the latest available table names. If this is false,
 	 * table names fetched previously (if available) will be returned.
-	 * @return array all table names in the database.
+	 * @return string[] all table names in the database.
 	 */
 	public function getTableNames($schema = '', $refresh = false)
 	{
@@ -168,6 +187,26 @@ abstract class Schema extends \yii\base\Object
 	}
 
 	/**
+	 * Determines the PDO type for the given PHP data value.
+	 * @param mixed $data the data whose PDO type is to be determined
+	 * @return integer the PDO type
+	 * @see http://www.php.net/manual/en/pdo.constants.php
+	 */
+	public function getPdoType($data)
+	{
+		static $typeMap = array(
+			// php type => PDO type
+			'boolean' => \PDO::PARAM_BOOL,
+			'integer' => \PDO::PARAM_INT,
+			'string' => \PDO::PARAM_STR,
+			'resource' => \PDO::PARAM_LOB,
+			'NULL' => \PDO::PARAM_NULL,
+		);
+		$type = gettype($data);
+		return isset($typeMap[$type]) ? $typeMap[$type] : \PDO::PARAM_STR;
+	}
+
+	/**
 	 * Refreshes the schema.
 	 * This method cleans up all cached table schemas so that they can be re-created later
 	 * to reflect the database schema change.
@@ -177,9 +216,7 @@ abstract class Schema extends \yii\base\Object
 		/** @var $cache Cache */
 		$cache = is_string($this->db->schemaCache) ? Yii::$app->getComponent($this->db->schemaCache) : $this->db->schemaCache;
 		if ($this->db->enableSchemaCache && $cache instanceof Cache) {
-			foreach ($this->_tables as $name => $table) {
-				$cache->delete($this->getCacheKey($cache, $name));
-			}
+			GroupDependency::invalidate($cache, $this->getCacheGroup());
 		}
 		$this->_tableNames = array();
 		$this->_tables = array();
@@ -200,7 +237,7 @@ abstract class Schema extends \yii\base\Object
 	 * This method should be overridden by child classes in order to support this feature
 	 * because the default implementation simply throws an exception.
 	 * @param string $schema the schema of the tables. Defaults to empty string, meaning the current or default schema.
-	 * @return array all table names in the database. The names have NO the schema name prefix.
+	 * @return array all table names in the database. The names have NO schema name prefix.
 	 * @throws NotSupportedException if this method is called
 	 */
 	protected function findTableNames($schema = '')
