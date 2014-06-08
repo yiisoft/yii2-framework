@@ -21,7 +21,7 @@ use Yii;
  * @property \yii\db\Connection $db The database connection. This property is read-only.
  * @property \yii\web\ErrorHandler|\yii\console\ErrorHandler $errorHandler The error handler application
  * component. This property is read-only.
- * @property \yii\base\Formatter $formatter The formatter application component. This property is read-only.
+ * @property \yii\base\Formatter|\yii\i18n\Formatter $formatter The formatter application component. This property is read-only.
  * @property \yii\i18n\I18N $i18n The internationalization component. This property is read-only.
  * @property \yii\log\Dispatcher $log The log dispatcher component. This property is read-only.
  * @property \yii\mail\MailerInterface $mail The mailer interface. This property is read-only.
@@ -101,16 +101,18 @@ abstract class Application extends Module
      */
     public $charset = 'UTF-8';
     /**
-     * @var string the language that is meant to be used for end users.
+     * @var string the language that is meant to be used for end users. It is recommended that you
+     * use [IETF language tags](http://en.wikipedia.org/wiki/IETF_language_tag). For example, `en` stands
+     * for English, while `en-US` stands for English (United States).
      * @see sourceLanguage
      */
-    public $language = 'en';
+    public $language = 'en-US';
     /**
      * @var string the language that the application is written in. This mainly refers to
      * the language that the messages and view files are written in.
      * @see language
      */
-    public $sourceLanguage = 'en';
+    public $sourceLanguage = 'en-US';
     /**
      * @var Controller the currently active controller instance
      */
@@ -151,8 +153,11 @@ abstract class Application extends Module
      * The "bootstrap" class listed above will be instantiated during the application
      * [[bootstrap()|bootstrapping process]]. If the class implements [[BootstrapInterface]],
      * its [[BootstrapInterface::bootstrap()|bootstrap()]] method will be also be called.
+     *
+     * If not set explicitly in the application config, this property will be populated with the contents of
+     * `@vendor/yiisoft/extensions.php`.
      */
-    public $extensions = [];
+    public $extensions;
     /**
      * @var array list of components that should be run during the application [[bootstrap()|bootstrapping process]].
      *
@@ -262,6 +267,10 @@ abstract class Application extends Module
      */
     protected function bootstrap()
     {
+        if ($this->extensions === null) {
+            $file = Yii::getAlias('@vendor/yiisoft/extensions.php');
+            $this->extensions = is_file($file) ? include($file) : [];
+        }
         foreach ($this->extensions as $extension) {
             if (!empty($extension['alias'])) {
                 foreach ($extension['alias'] as $name => $path) {

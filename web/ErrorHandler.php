@@ -129,7 +129,7 @@ class ErrorHandler extends \yii\base\ErrorHandler
         if (YII_DEBUG) {
             $array['stack-trace'] = explode("\n", $exception->getTraceAsString());
             if ($exception instanceof \yii\db\Exception) {
-                $array['error-info'] = $this->errorInfo;
+                $array['error-info'] = $exception->errorInfo;
             }
         }
         if (($prev = $exception->getPrevious()) !== null) {
@@ -156,11 +156,10 @@ class ErrorHandler extends \yii\base\ErrorHandler
      */
     public function addTypeLinks($code)
     {
-        if (preg_match('/(.*?)::([^(]+)\((.*)\)/', $code, $matches)) {
+        if (preg_match('/(.*?)::([^(]+)/', $code, $matches)) {
             $class = $matches[1];
             $method = $matches[2];
-            $args = $matches[3];
-            $text = $this->htmlEncode($class) . '::' . $this->htmlEncode($method) . '(' . $args . ')';
+            $text = $this->htmlEncode($class) . '::' . $this->htmlEncode($method);
         } else {
             $class = $code;
             $text = $this->htmlEncode($class);
