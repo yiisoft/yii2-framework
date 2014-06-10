@@ -359,7 +359,8 @@ class Container extends Component
 
         if (!empty($dependencies) && is_a($class, 'yii\base\Object', true)) {
             // set $config as the last parameter (existing one will be overwritten)
-            $dependencies[count($dependencies) - 1] = $config;
+            //$dependencies[count($dependencies) - 1] = $config;
+            $dependencies = array_merge($dependencies,$config);
             $dependencies = $this->resolveDependencies($dependencies, $reflection);
             return $reflection->newInstanceArgs($dependencies);
         } else {
