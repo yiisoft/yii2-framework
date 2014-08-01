@@ -95,6 +95,11 @@ class ActiveQuery extends Query implements ActiveQueryInterface
      */
     public $joinWith;
 
+    /**
+     * @var string Alias for the [[ActiveQueryTrait::$modelClass]] table name
+     */
+    public $alias;
+
 
     /**
      * Constructor.
@@ -144,7 +149,7 @@ class ActiveQuery extends Query implements ActiveQueryInterface
             /* @var $modelClass ActiveRecord */
             $modelClass = $this->modelClass;
             $tableName = $modelClass::tableName();
-            $this->from = [$tableName];
+            $this->from = empty($this->alias)?[$tableName]:[$this->alias => $tableName];
         }
 
         if (empty($this->select) && !empty($this->join)) {
@@ -718,4 +723,5 @@ class ActiveQuery extends Query implements ActiveQueryInterface
 
         return $this;
     }
+
 }
