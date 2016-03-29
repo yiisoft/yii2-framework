@@ -309,12 +309,12 @@ SQL;
     {
         $sql = <<<SQL
 SELECT username
-  FROM dba_users u
+  FROM all_users u
  WHERE EXISTS (
     SELECT 1
-      FROM dba_objects o
+      FROM all_objects o
      WHERE o.owner = u.username )
-   AND default_tablespace not in ('SYSTEM','SYSAUX')
+--   AND default_tablespace not in ('SYSTEM','SYSAUX')
 SQL;
         return $this->db->createCommand($sql)->queryColumn();
     }
