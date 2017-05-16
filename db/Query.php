@@ -573,7 +573,7 @@ class Query extends Component implements QueryInterface
     public function where($condition, $params = [])
     {
         $this->where = $condition;
-        $this->addParams($params);
+        $this->params = $params;
         return $this;
     }
 
