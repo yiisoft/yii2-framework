@@ -52,6 +52,11 @@ class MaskedInput extends InputWidget
     const PLUGIN_NAME = 'inputmask';
 
     /**
+     * @var string the type attribute for the input field. `text` is the default
+     */
+    public $type = 'text';
+
+    /**
      * @var string|array|JsExpression the input mask (e.g. '99/99/9999' for date input). The following characters
      * can be used in the mask and are predefined:
      *
