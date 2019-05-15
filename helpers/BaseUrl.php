@@ -100,9 +100,9 @@ class BaseUrl
 
         if ($scheme !== false) {
             return static::getUrlManager()->createAbsoluteUrl($route, is_string($scheme) ? $scheme : null);
+        } else {
+            return static::getUrlManager()->createUrl($route);
         }
-
-        return static::getUrlManager()->createUrl($route);
     }
 
     /**
@@ -140,10 +140,10 @@ class BaseUrl
         if (strpos($route, '/') === false) {
             // empty or an action ID
             return $route === '' ? Yii::$app->controller->getRoute() : Yii::$app->controller->getUniqueId() . '/' . $route;
+        } else {
+            // relative to module
+            return ltrim(Yii::$app->controller->module->getUniqueId() . '/' . $route, '/');
         }
-
-        // relative to module
-        return ltrim(Yii::$app->controller->module->getUniqueId() . '/' . $route, '/');
     }
 
     /**
@@ -211,7 +211,7 @@ class BaseUrl
     public static function to($url = '', $scheme = false)
     {
         if (is_array($url)) {
-            return static::toRoute($url, $scheme);
+            return self::isSecureUrl(static::toRoute($url, $scheme));
         }
 
         $url = Yii::getAlias($url);
@@ -220,7 +220,7 @@ class BaseUrl
         }
 
         if ($scheme === false) {
-            return $url;
+            return self::isSecureUrl($url);
         }
 
         if (static::isRelative($url)) {
@@ -228,7 +228,7 @@ class BaseUrl
             $url = static::getUrlManager()->getHostInfo() . '/' . ltrim($url, '/');
         }
 
-        return static::ensureScheme($url, $scheme);
+        return self::isSecureUrl(static::ensureScheme($url, $scheme));
     }
 
     /**
@@ -250,7 +250,7 @@ class BaseUrl
 
         if (substr($url, 0, 2) === '//') {
             // e.g. //example.com/path/to/resource
-            return $scheme === '' ? $url : "$scheme:$url";
+            return self::isSecureUrl($scheme === '' ? $url : "$scheme:$url") ;
         }
 
         if (($pos = strpos($url, '://')) !== false) {
@@ -261,7 +261,7 @@ class BaseUrl
             }
         }
 
-        return $url;
+        return self::isSecureUrl($url);
     }
 
     /**
@@ -282,7 +282,7 @@ class BaseUrl
             $url = static::ensureScheme($url, $scheme);
         }
 
-        return $url;
+        return self::isSecureUrl($url);
     }
 
     /**
@@ -291,9 +291,8 @@ class BaseUrl
      * @param string|array $url the URL to remember. Please refer to [[to()]] for acceptable formats.
      * If this parameter is not specified, the currently requested URL will be used.
      * @param string $name the name associated with the URL to be remembered. This can be used
-     * later by [[previous()]]. If not set, [[\yii\web\User::setReturnUrl()]] will be used with passed URL.
+     * later by [[previous()]]. If not set, it will use [[\yii\web\User::returnUrlParam]].
      * @see previous()
-     * @see \yii\web\User::setReturnUrl()
      */
     public static function remember($url = '', $name = null)
     {
@@ -310,24 +309,21 @@ class BaseUrl
      * Returns the URL previously [[remember()|remembered]].
      *
      * @param string $name the named associated with the URL that was remembered previously.
-     * If not set, [[\yii\web\User::getReturnUrl()]] will be used to obtain remembered URL.
-     * @return string|null the URL previously remembered. Null is returned if no URL was remembered with the given name
-     * and `$name` is not specified.
+     * If not set, it will use [[\yii\web\User::returnUrlParam]].
+     * @return string|null the URL previously remembered. Null is returned if no URL was remembered with the given name.
      * @see remember()
-     * @see \yii\web\User::getReturnUrl()
      */
     public static function previous($name = null)
     {
         if ($name === null) {
-            return Yii::$app->getUser()->getReturnUrl();
+            return self::isSecureUrl(Yii::$app->getUser()->getReturnUrl());
+        } else {
+            return self::isSecureUrl(Yii::$app->getSession()->get($name));
         }
-
-        return Yii::$app->getSession()->get($name);
     }
 
     /**
      * Returns the canonical URL of the currently requested page.
-     *
      * The canonical URL is constructed using the current controller's [[\yii\web\Controller::route]] and
      * [[\yii\web\Controller::actionParams]]. You may use the following code in the layout view to add a link tag
      * about canonical URL:
@@ -343,7 +339,7 @@ class BaseUrl
         $params = Yii::$app->controller->actionParams;
         $params[0] = Yii::$app->controller->getRoute();
 
-        return static::getUrlManager()->createAbsoluteUrl($params);
+        return self::isSecureUrl(static::getUrlManager()->createAbsoluteUrl($params));
     }
 
     /**
@@ -367,7 +363,7 @@ class BaseUrl
             $url = static::ensureScheme($url, $scheme);
         }
 
-        return $url;
+        return self::isSecureUrl($url);
     }
 
     /**
@@ -429,16 +425,40 @@ class BaseUrl
     {
         $currentParams = Yii::$app->getRequest()->getQueryParams();
         $currentParams[0] = '/' . Yii::$app->controller->getRoute();
-        $route = array_replace_recursive($currentParams, $params);
-        return static::toRoute($route, $scheme);
+        $route = ArrayHelper::merge($currentParams, $params);
+        return self::isSecureUrl(static::toRoute($route, $scheme));
     }
 
     /**
-     * @return \yii\web\UrlManager URL manager used to create URLs
+     * @return string \yii\web\UrlManager URL manager used to create URLs
      * @since 2.0.8
      */
     protected static function getUrlManager()
     {
-        return static::$urlManager ?: Yii::$app->getUrlManager();
+        return self::isSecureUrl( static::$urlManager ?: Yii::$app->getUrlManager() );
+    }
+
+
+    /**
+     *  Checking Url To Prevent Xss Attack and Sanitize
+     *
+     * @param $url
+     * @return string
+     */
+    public static function isSecureUrl($url)
+    {
+        if ( is_array($url) ){
+            foreach ( $url as $address ){
+                self::isSecureUrl($address);
+            }
+        }
+
+        $url = filter_var(urldecode($url), FILTER_SANITIZE_SPECIAL_CHARS);
+
+        if (! filter_var($url, FILTER_VALIDATE_URL)){
+            return '';
+        }
+
+        return HtmlPurifier::process(urlencode($url));
     }
 }
