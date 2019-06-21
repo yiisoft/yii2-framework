@@ -142,8 +142,8 @@ class ActionColumn extends Column
      */
     protected function initDefaultButtons()
     {
-        $this->initDefaultButton('view', 'eye-open');
-        $this->initDefaultButton('update', 'pencil');
+        $this->initDefaultButton('view', 'eye');
+        $this->initDefaultButton('update', 'edit');
         $this->initDefaultButton('delete', 'trash', [
             'data-confirm' => Yii::t('yii', 'Are you sure you want to delete this item?'),
             'data-method' => 'post',
@@ -178,7 +178,7 @@ class ActionColumn extends Column
                     'title' => $title,
                     'aria-label' => $title,
                 ], $additionalOptions, $this->buttonOptions);
-                $icon = Html::tag('span', '', ['class' => "glyphicon glyphicon-$iconName"]);
+                $icon = Html::tag('span', '', ['class' => "fas fa-$iconName"]);
                 return Html::a($icon, $url, $options);
             };
         }
