@@ -523,7 +523,8 @@ trait ActiveRelationTrait
             // single key
             $attribute = reset($this->link);
             foreach ($models as $model) {
-                if (($value = $model[$attribute]) !== null) {
+                if ($model !== null) {
+                    $value = $model[$attribute];
                     if (is_array($value)) {
                         $values = array_merge($values, $value);
                     } elseif ($value instanceof ArrayExpression && $value->getDimension() === 1) {
