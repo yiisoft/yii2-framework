@@ -101,7 +101,7 @@ class BaseYii
      *
      * The translation is done according to the following procedure:
      *
-     * 1. If the given alias does not start with '@', it is returned back without change;
+     * 1. If the given alias does not start with '@', it is returned without change;
      * 2. Otherwise, look for the longest registered alias that matches the beginning part
      *    of the given alias. If it exists, replace the matching part of the given alias with
      *    the corresponding registered path.
@@ -522,7 +522,7 @@ class BaseYii
      * echo \Yii::t('app', 'Hello, {username}!', ['username' => $username]);
      * ```
      *
-     * Further formatting of message parameters is supported using the [PHP intl extensions](https://secure.php.net/manual/en/intro.intl.php)
+     * Further, formatting of message parameters is supported using the [PHP intl extensions](https://secure.php.net/manual/en/intro.intl.php)
      * message formatter. See [[\yii\i18n\I18N::translate()]] for more details.
      *
      * @param string $category the message category.

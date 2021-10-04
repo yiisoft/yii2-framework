@@ -13,14 +13,14 @@ running `composer update`. In a big application however there may be more things
 which are explained in the following.
 
 > Note: This document assumes you have composer [installed globally](http://www.yiiframework.com/doc-2.0/guide-start-installation.html#installing-composer)
-so that you can run the `composer` command. If you have a `composer.phar` file inside of your project you need to
+so that you can run the `composer` command. If you have a `composer.phar` file inside your project you need to
 replace `composer` with `php composer.phar` in the following.
 
 > Tip: Upgrading dependencies of a complex software project always comes at the risk of breaking something, so make sure
 you have a backup (you should be doing this anyway ;) ).
 
 In case you use [composer asset plugin](https://github.com/fxpio/composer-asset-plugin) instead of the currently recommended
-[asset-packagist.org](https://asset-packagist.org) to install Bower and NPM assets, make sure it is upgraded to the latest version as well. To ensure best stability you should also upgrade composer in this step:
+[asset-packagist.org](https://asset-packagist.org) to install Bower and NPM assets, make sure it is upgraded to the latest version as well. To ensure the best stability you should also upgrade composer in this step:
 
     composer self-update
     composer global require "fxp/composer-asset-plugin:^1.4.1" --no-plugins
@@ -39,7 +39,7 @@ run `composer update` by specifying all packages that are allowed to be updated.
     composer update yiisoft/yii2 yiisoft/yii2-composer bower-asset/inputmask
 
 The above command will only update the specified packages and leave the versions of all other dependencies intact.
-This helps to update packages step by step without causing a lot of package version changes that might break in some way.
+This helps to update package step by step without causing a lot of package version changes that might break in some way.
 If you feel lucky you can of course update everything to the latest version by running `composer update` without
 any restrictions.
 
@@ -223,7 +223,7 @@ Upgrade from Yii 2.0.35
 Upgrade from Yii 2.0.34
 -----------------------
 
-* `ExistValidator` used as a rule of `EachValidator` now requires providing `targetClass` explicitely and it's not possible to use it with `targetRelation` in
+* `ExistValidator` used as a rule of `EachValidator` now requires providing `targetClass` explicitly, and it's not possible to use it with `targetRelation` in
   that configuration.
   
   ```php
@@ -406,7 +406,7 @@ Upgrade from Yii 2.0.14
   ```
 
   ```php
-  // explicitly specifying the colum to search, passing a scalar or array here will always result in finding a single record
+  // explicitly specifying the column to search, passing a scalar or array here will always result in finding a single record
   $model = Post::findOne(['id' => Yii::$app->request->get('id')]);
   ```
 
@@ -465,7 +465,7 @@ Upgrade from Yii 2.0.13
   - Replace usages of `yii\base\InvalidParamException` with `yii\base\InvalidArgumentException`.
   - Replace calls to `Yii::trace()` with `Yii::debug()`.
   - Remove calls to `yii\BaseYii::powered()`.
-  - If you are using XCache or Zend data cache, those are going away in 2.1 so you might want to start looking for an alternative.
+  - If you are using XCache or Zend data cache, those are going away in 2.1, so you might want to start looking for an alternative.
 
 * In case you aren't using CSRF cookies (REST APIs etc.) you should turn them off explicitly by setting
   `\yii\web\Request::$enableCsrfCookie` to `false` in your config file.
@@ -492,7 +492,7 @@ Upgrade from Yii 2.0.12
   ]
   ```
 
-* For compatibiliy with [PHP 7.2 which does not allow classes to be named `Object` anymore](https://wiki.php.net/rfc/object-typehint),
+* For compatibility with [PHP 7.2 which does not allow classes to be named `Object` anymore](https://wiki.php.net/rfc/object-typehint),
   we needed to rename `yii\base\Object` to `yii\base\BaseObject`.
   
   `yii\base\Object` still exists for backwards compatibility and will be loaded if needed in projects that are
@@ -536,7 +536,7 @@ Upgrade from Yii 2.0.12
 
   - If you have an `instance()` method defined in an `ActiveRecord` or `Model` class, you need to check whether the behavior is
     compatible with the method added by Yii.
-  - Otherwise this method is implemented in the `yii\base\Model`, so the change only affects your code if you implement `ActiveRecordInterface`
+  - Otherwise, this method is implemented in the `yii\base\Model`, so the change only affects your code if you implement `ActiveRecordInterface`
     in a class that does not extend `Model`. You may use `yii\base\StaticInstanceTrait` to implement it.
     
 * Fixed built-in validator creating when model has a method with the same name. 
@@ -651,8 +651,8 @@ Upgrade from Yii 2.0.7
   parameter `$db`. In case you are instantiating this class yourself and using the `$config` parameter, you will need to
   move it to the right by one.
 
-* String types in the MSSQL column schema map were upgraded to Unicode storage types. This will have no effect on
-  existing columns, but any new columns you generate via the migrations engine will now store data as Unicode.
+* String types in the MSSQL column schema map were upgraded to Unicode storage types. This will not affect on
+  existing columns, but any new columns you generate via the migration's engine will now store data as Unicode.
 
 * Output buffering was introduced in the pair of `yii\widgets\ActiveForm::init()` and `::run()`. If you override any of
   these methods, make sure that output buffer handling is not corrupted. If you call the parent implementation, when
@@ -735,7 +735,7 @@ Upgrade from Yii 2.0.2
 ----------------------
 
 Starting from version 2.0.3 Yii `Security` component relies on OpenSSL crypto lib instead of Mcrypt. The reason is that
-Mcrypt is abandoned and isn't maintained for years. Therefore your PHP should be compiled with OpenSSL support. Most
+Mcrypt is abandoned and isn't maintained for years. Therefore, your PHP should be compiled with OpenSSL support. Most
 probably there's nothing to worry because it is quite typical.
 
 If you've extended `yii\base\Security` to override any of the config constants you have to update your code:
@@ -765,7 +765,7 @@ Upgrade from Yii 2.0 RC
 
 * The input dates for datetime formatting are now assumed to be in UTC unless a timezone is explicitly given.
   Before, the timezone assumed for input dates was the default timezone set by PHP which is the same as `Yii::$app->timeZone`.
-  This causes trouble because the formatter uses `Yii::$app->timeZone` as the default values for output so no timezone conversion
+  These causes trouble because the formatter uses `Yii::$app->timeZone` as the default values for output so no timezone conversion
   was possible. If your timestamps are stored in the database without a timezone identifier you have to ensure they are in UTC or
   add a timezone identifier explicitly.
 
@@ -981,7 +981,7 @@ new ones save the following code as `convert.php` that should be placed in the s
   [as explained by @docsolver at github](https://github.com/yiisoft/yii2/issues/4461#issuecomment-50237807).
 
 * [[yii\helpers\Url::to()]] will no longer prefix base URL to relative URLs. For example, `Url::to('images/logo.png')`
-  will return `images/logo.png` directly. If you want a relative URL to be prefix with base URL, you should make use
+  will return `images/logo.png` directly. If you want a relative URL to be prefixed with base URL, you should make use
   of the alias `@web`. For example, `Url::to('@web/images/logo.png')` will return `/BaseUrl/images/logo.png`.
 
 * The following properties are now taking `false` instead of `null` for "don't use" case:
@@ -1013,8 +1013,8 @@ new ones save the following code as `convert.php` that should be placed in the s
 
 * The formatter class has been refactored to have only one class regardless whether PHP intl extension is installed or not.
   Functionality of `yii\base\Formatter` has been merged into `yii\i18n\Formatter` and `yii\base\Formatter` has been
-  removed so you have to replace all usage of `yii\base\Formatter` with `yii\i18n\Formatter` in your code.
-  Also the API of the Formatter class has changed in many ways.
+  removed, so you have to replace all usage of `yii\base\Formatter` with `yii\i18n\Formatter` in your code.
+  Also, the API of the Formatter class has changed in many ways.
   The signature of the following Methods has changed:
 
   - `asDate`
@@ -1032,7 +1032,7 @@ new ones save the following code as `convert.php` that should be placed in the s
   - `asNumber`
   - `asDouble`
 
-  Also due to these changes some formatting defaults have changes so you have to check all your GridView and DetailView
+  Also, due to these changes some formatting defaults have changes, so you have to check all your GridView and DetailView
   configuration and make sure the formatting is displayed correctly.
 
   The configuration for `asSize()` has changed. It now uses the configuration for the number formatting from intl
@@ -1071,7 +1071,7 @@ new ones save the following code as `convert.php` that should be placed in the s
   ```
 
 * The signature of `View::registerJsFile()` and `View::registerCssFile()` has changed. The `$depends` and `$position`
-  paramaters have been merged into `$options`. The new signatures are as follows:
+  parameters have been merged into `$options`. The new signatures are as follows:
 
   - `registerJsFile($url, $options = [], $key = null)`
   - `registerCssFile($url, $options = [], $key = null)`
